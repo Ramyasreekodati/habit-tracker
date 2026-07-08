@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -138,6 +139,7 @@ function App() {
         <div className="flex overflow-x-auto gap-2 mb-8 bg-slate-800/30 p-2 rounded-xl border border-slate-700/50">
           {[
             {id: 'home', label: '⚡ Next'},
+            {id: 'analytics', label: '📈 Analytics'},
             {id: 'health', label: 'L1 Health'},
             {id: 'learning', label: 'L2 Learning'},
             {id: 'sessions', label: 'L3 Sessions'},
@@ -245,6 +247,26 @@ function App() {
               <textarea value={careerImpact} onChange={e=>setCareerImpact(e.target.value)} placeholder="AI will generate professional impact here..." className="w-full p-2 bg-slate-900 rounded border border-slate-700 h-24"></textarea>
               <button type="submit" className="w-full p-3 bg-indigo-600 hover:bg-indigo-500 rounded font-bold">Commit to Career Timeline</button>
             </form>
+          </div>
+        )}
+
+        {/* Analytics Dashboard */}
+        {activeTab === 'analytics' && (
+          <div className="animate-in fade-in space-y-6">
+            <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
+              <h2 className="font-bold text-xl mb-4">Output Velocity Over Time</h2>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={sessions.slice().reverse()}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="date" stroke="#94a3b8" />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
+                    <Line type="monotone" dataKey="output_quantity" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
         )}
 
