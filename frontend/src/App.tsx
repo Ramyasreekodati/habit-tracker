@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -7,236 +7,243 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('home');
   const [nextTask, setNextTask] = useState<any>(null);
+  const [oppCost, setOppCost] = useState<string>("");
   const [learningDebt, setLearningDebt] = useState<any[]>([]);
-  const [healthLogs, setHealthLogs] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [careerLogs, setCareerLogs] = useState<any[]>([]);
 
-  // Form State
-  const [sleep, setSleep] = useState(7);
-  const [water, setWater] = useState(8);
-  const [walk, setWalk] = useState(45);
-  const [newTopic, setNewTopic] = useState("");
-  const [category, setCategory] = useState("Git Commit");
-  const [description, setDescription] = useState("");
-  const [resumeImpact, setResumeImpact] = useState("");
+  // Auth fetch wrapper
+  const authFetch = async (url: string, options: any = {}) => {
+    if (!token) return null;
+    options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      setToken(null);
+    }
+    return res;
+  };
 
   const handleLogin = async (e: any) => {
     e.preventDefault();
     const formData = new URLSearchParams();
     formData.append('username', username);
     formData.append('password', password);
-
     try {
-      const res = await fetch('http://localhost:8000/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData,
-      });
+      const res = await fetch('http://localhost:8000/token', { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem('token', data.access_token);
         setToken(data.access_token);
-      } else {
-        alert("Invalid credentials");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to connect to backend");
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-  };
-
-  const authFetch = async (url: string, options: any = {}) => {
-    if (!token) return null;
-    options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
-    const res = await fetch(url, options);
-    if (res.status === 401) handleLogout();
-    return res;
+      } else alert("Invalid credentials");
+    } catch (err) { alert("Failed to connect to backend"); }
   };
 
   const fetchData = async () => {
     if (!token) return;
-    try {
-      let r1 = await authFetch('http://localhost:8000/next-task/');
-      if (r1?.ok) setNextTask(await r1.json());
-      let r2 = await authFetch('http://localhost:8000/learning_debt/');
-      if (r2?.ok) setLearningDebt(await r2.json());
-      let r3 = await authFetch('http://localhost:8000/health/');
-      if (r3?.ok) setHealthLogs(await r3.json());
-      let r4 = await authFetch('http://localhost:8000/career/');
-      if (r4?.ok) setCareerLogs(await r4.json());
-    } catch (err) { console.error(err); }
+    authFetch('http://localhost:8000/engine/next-task').then(r => r?.json()).then(setNextTask);
+    authFetch('http://localhost:8000/engine/opportunity-cost').then(r => r?.json()).then(d => setOppCost(d?.message));
+    authFetch('http://localhost:8000/learning_state/').then(r => r?.json()).then(setLearningDebt);
+    authFetch('http://localhost:8000/sessions/').then(r => r?.json()).then(setSessions);
+    authFetch('http://localhost:8000/projects/').then(r => r?.json()).then(setProjects);
+    authFetch('http://localhost:8000/career/').then(r => r?.json()).then(setCareerLogs);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [token]);
+  useEffect(() => { fetchData(); }, [token]);
 
-  const handleHealthSubmit = async (e: any) => {
+  // Session Timer Logic
+  const [timerActive, setTimerActive] = useState(false);
+  const [sessionSeconds, setSessionSeconds] = useState(0);
+  const [sessionTopic, setSessionTopic] = useState("");
+  const intervalRef = useRef<any>(null);
+
+  const toggleTimer = () => {
+    if (timerActive) {
+      clearInterval(intervalRef.current);
+      setTimerActive(false);
+      // Log session
+      const mins = Math.floor(sessionSeconds / 60);
+      const outQ = prompt("How many problems/features did you complete?");
+      authFetch('http://localhost:8000/sessions/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ date: new Date().toISOString().split('T')[0], topic: sessionTopic, start_time: "Started", end_time: "Ended", duration_minutes: mins, output_quantity: Number(outQ) })
+      }).then(() => { setSessionSeconds(0); fetchData(); });
+    } else {
+      setTimerActive(true);
+      intervalRef.current = setInterval(() => setSessionSeconds(s => s + 1), 1000);
+    }
+  };
+
+  // Learning State Form
+  const [newTopic, setNewTopic] = useState("");
+  const [diff, setDiff] = useState(5);
+  const [imp, setImp] = useState(5);
+  const [freq, setFreq] = useState(5);
+
+  const addLearningTopic = (e: any) => {
     e.preventDefault();
-    await authFetch('http://localhost:8000/health/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: new Date().toISOString().split('T')[0], sleep, water, walk, exercise: 0, meditation: 0 })
-    });
-    fetchData();
-    alert("Health logged!");
+    authFetch('http://localhost:8000/learning_state/', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ topic: newTopic, difficulty: diff, importance: imp, interview_frequency: freq, pipeline_stage: "Learn" })
+    }).then(() => { setNewTopic(""); fetchData(); });
   };
 
-  const handleDebtSubmit = async (e: any) => {
+  // Career Form
+  const [careerCat, setCareerCat] = useState("Project Feature");
+  const [careerDesc, setCareerDesc] = useState("");
+  const [careerImpact, setCareerImpact] = useState("");
+
+  const handleAIImpact = async () => {
+    const res = await authFetch('http://localhost:8000/engine/generate-resume', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text: careerDesc })
+    });
+    if (res?.ok) {
+      const data = await res.json();
+      setCareerImpact(data.resume_bullet);
+    }
+  };
+
+  const addCareerOutput = (e: any) => {
     e.preventDefault();
-    await authFetch('http://localhost:8000/learning_debt/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic: newTopic, status: '❌ Not Mastered' })
-    });
-    setNewTopic("");
-    fetchData();
+    authFetch('http://localhost:8000/career/', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ date: new Date().toISOString().split('T')[0], category: careerCat, description: careerDesc, resume_impact: careerImpact })
+    }).then(() => { setCareerDesc(""); setCareerImpact(""); fetchData(); });
   };
 
-  const handleCareerSubmit = async (e: any) => {
-    e.preventDefault();
-    await authFetch('http://localhost:8000/career/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: new Date().toISOString().split('T')[0], category, description, resume_impact: resumeImpact })
-    });
-    setDescription("");
-    setResumeImpact("");
-    fetchData();
-    alert("Output mapped to Resume!");
-  };
-
-  if (!token) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center font-sans">
-        <form onSubmit={handleLogin} className="bg-slate-800 p-8 rounded-xl shadow-2xl border border-slate-700 max-w-sm w-full">
-          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-            <svg className="w-6 h-6 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-            GrowthOS Login
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Username</label>
-              <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white" required />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white" required />
-            </div>
-            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded transition-all">Secure Login</button>
-          </div>
-        </form>
-      </div>
-    );
-  }
-
-  const avgSleep = healthLogs.length > 0 ? healthLogs.reduce((acc, curr) => acc + curr.sleep, 0) / healthLogs.length : 0;
+  if (!token) return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center font-sans text-white">
+      <form onSubmit={handleLogin} className="bg-slate-800 p-8 rounded-xl border border-slate-700 w-96 space-y-4">
+        <h2 className="text-xl font-bold">GrowthOS V9</h2>
+        <input type="text" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} className="w-full p-2 bg-slate-900 rounded border border-slate-700" />
+        <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-2 bg-slate-900 rounded border border-slate-700" />
+        <button type="submit" className="w-full p-2 bg-indigo-600 rounded font-bold hover:bg-indigo-500">Login</button>
+      </form>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-indigo-500/30">
-      <div className="max-w-3xl mx-auto p-6 pt-12 relative">
-        <button onClick={handleLogout} className="absolute top-4 right-4 text-sm text-slate-500 hover:text-white">Logout</button>
-        {/* Navigation */}
-        <div className="flex space-x-2 mb-12 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50 mt-4">
-          {['home', 'health', 'learning', 'career'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
-                activeTab === tab ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/30'
-              }`}
-            >
-              {tab === 'home' ? '⚡ What\'s Next?' : tab === 'health' ? '🧘 Health' : tab === 'learning' ? '🧠 Learning' : '🚀 Career'}
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-20">
+      <div className="max-w-4xl mx-auto p-4 pt-10">
+        
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-2xl font-black tracking-tight text-white">GrowthOS <span className="text-indigo-500 text-sm align-top">V9</span></h1>
+          <button onClick={()=>{localStorage.removeItem('token'); setToken(null);}} className="text-slate-500 text-sm">Logout</button>
+        </div>
+
+        {/* 5 Layer Navigation */}
+        <div className="flex overflow-x-auto gap-2 mb-8 bg-slate-800/30 p-2 rounded-xl border border-slate-700/50">
+          {[
+            {id: 'home', label: '⚡ Next'},
+            {id: 'health', label: 'L1 Health'},
+            {id: 'learning', label: 'L2 Learning'},
+            {id: 'sessions', label: 'L3 Sessions'},
+            {id: 'projects', label: 'L4 Projects'},
+            {id: 'career', label: 'L5 Career'}
+          ].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              className={`whitespace-nowrap px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                activeTab === t.id ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'text-slate-400 hover:bg-slate-700/30'
+              }`}>
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Home Tab */}
+        {/* Next Task Engine */}
         {activeTab === 'home' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {nextTask ? (
-              <div className="bg-indigo-500/5 border border-indigo-500/20 border-l-4 border-l-indigo-500 rounded-xl p-8 mb-8">
-                <p className="text-indigo-400 font-bold uppercase tracking-wider text-xs mb-2">Current Task</p>
-                <h2 className="text-3xl font-extrabold text-white mb-6 tracking-tight">{nextTask.current_task}</h2>
-                <div className="grid grid-cols-2 gap-4 mb-8 text-sm">
-                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800"><span className="text-slate-400 block mb-1">Expected Duration</span><span className="font-semibold">{nextTask.expected_duration}</span></div>
-                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800"><span className="text-slate-400 block mb-1">Difficulty</span><span className="font-semibold text-rose-300">{nextTask.difficulty}</span></div>
-                  <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-800 col-span-2"><span className="text-slate-400 block mb-1">Reason (Learning Debt)</span><span className="font-semibold">{nextTask.reason}</span></div>
-                </div>
-                <button className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-lg transition-all flex items-center justify-center gap-2">
-                  ✅ Mark Complete & Get Next Task
-                </button>
-              </div>
-            ) : (<div className="text-center py-20 text-slate-500"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto mb-4"></div>Loading Secure Engine...</div>)}
-            
-            <div className="bg-slate-800/30 border border-slate-700/50 rounded-xl p-5 flex items-start gap-4">
-              <div className="bg-amber-500/20 p-2 rounded-lg text-amber-400">💡</div>
-              <div>
-                <h4 className="text-amber-400 font-bold mb-1">Opportunity Cost Indicator</h4>
-                <p className="text-sm text-slate-400">If you spend 2 hours on YouTube right now, you will lose the opportunity to complete 1 Project Feature or solve 8 SQL problems.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Health Tab */}
-        {activeTab === 'health' && (
           <div className="animate-in fade-in space-y-6">
-            {avgSleep > 0 && avgSleep < 6.5 && (
-              <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-4 rounded-xl">
-                🚨 <b>Recovery Warning:</b> Sleep average is {avgSleep.toFixed(1)}h. Recommendation: Reduce workload temporarily.
+            {nextTask && (
+              <div className="bg-indigo-500/10 border-l-4 border-indigo-500 rounded-r-xl p-6">
+                <p className="text-indigo-400 text-xs font-bold uppercase mb-2">Priority Calculation: {nextTask.priority_score}</p>
+                <h2 className="text-3xl font-extrabold mb-4">{nextTask.current_task}</h2>
+                <div className="flex gap-4 text-sm text-slate-300 mb-6">
+                  <div className="bg-slate-800 px-3 py-1 rounded">Stage: {nextTask.pipeline_stage}</div>
+                  <div className="bg-slate-800 px-3 py-1 rounded">{nextTask.reason}</div>
+                </div>
+                
+                <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl flex items-center justify-between">
+                  <div>
+                    <input type="text" placeholder="Session Topic" value={sessionTopic} onChange={e=>setSessionTopic(e.target.value)} className="bg-slate-800 text-white p-2 rounded border border-slate-700 mr-4" />
+                    <span className="font-mono text-xl text-indigo-400">{Math.floor(sessionSeconds/60)}:{('0'+(sessionSeconds%60)).slice(-2)}</span>
+                  </div>
+                  <button onClick={toggleTimer} className={`px-6 py-2 rounded font-bold ${timerActive ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+                    {timerActive ? 'Stop Session & Log' : 'Start Deep Work'}
+                  </button>
+                </div>
               </div>
             )}
-            <form onSubmit={handleHealthSubmit} className="bg-slate-800/50 border border-slate-700/50 p-6 rounded-xl grid grid-cols-3 gap-4">
-              <div><label className="block text-sm mb-1 text-slate-400">Sleep (hrs)</label><input type="number" step="0.5" value={sleep} onChange={e => setSleep(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white" /></div>
-              <div><label className="block text-sm mb-1 text-slate-400">Water (glasses)</label><input type="number" value={water} onChange={e => setWater(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white" /></div>
-              <div><label className="block text-sm mb-1 text-slate-400">Walk (mins)</label><input type="number" value={walk} onChange={e => setWalk(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white" /></div>
-              <button type="submit" className="col-span-3 bg-indigo-600 hover:bg-indigo-500 p-3 rounded font-bold mt-2">Log Fixed Habits</button>
-            </form>
-          </div>
-        )}
-
-        {/* Learning Tab */}
-        {activeTab === 'learning' && (
-          <div className="animate-in fade-in space-y-6">
-            <div className="bg-slate-800/50 border border-slate-700/50 p-6 rounded-xl">
-              <h3 className="text-lg font-bold mb-4">Learning Debt Status</h3>
-              <div className="space-y-3">
-                {learningDebt.map(debt => (
-                  <div key={debt.id} className="flex items-center gap-3 bg-slate-900/50 p-3 rounded border border-slate-800">
-                    <span className="text-xl">{debt.status.includes('✅') ? '✅' : '❌'}</span>
-                    <span className="font-semibold">{debt.topic}</span>
-                  </div>
-                ))}
-              </div>
-              <form onSubmit={handleDebtSubmit} className="mt-6 flex gap-2">
-                <input type="text" placeholder="New Topic to Master..." value={newTopic} onChange={e => setNewTopic(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded p-3 text-white" required />
-                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 px-6 rounded font-bold">Add Debt</button>
-              </form>
+            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-center gap-4">
+              <div className="text-amber-500">💡</div>
+              <div className="text-sm font-semibold text-slate-300">{oppCost}</div>
             </div>
           </div>
         )}
 
-        {/* Career Tab */}
+        {/* Layer 2: Learning */}
+        {activeTab === 'learning' && (
+          <div className="animate-in fade-in space-y-6">
+            <form onSubmit={addLearningTopic} className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 grid grid-cols-4 gap-4">
+              <div className="col-span-4 font-bold">Add Learning Topic</div>
+              <input type="text" placeholder="Topic (e.g. Window Functions)" value={newTopic} onChange={e=>setNewTopic(e.target.value)} className="col-span-4 p-2 bg-slate-900 rounded border border-slate-700" required />
+              <div><label className="text-xs text-slate-400">Difficulty (1-10)</label><input type="number" value={diff} onChange={e=>setDiff(Number(e.target.value))} className="w-full p-2 bg-slate-900 rounded border border-slate-700"/></div>
+              <div><label className="text-xs text-slate-400">Importance (1-10)</label><input type="number" value={imp} onChange={e=>setImp(Number(e.target.value))} className="w-full p-2 bg-slate-900 rounded border border-slate-700"/></div>
+              <div><label className="text-xs text-slate-400">Freq in Interviews (1-10)</label><input type="number" value={freq} onChange={e=>setFreq(Number(e.target.value))} className="w-full p-2 bg-slate-900 rounded border border-slate-700"/></div>
+              <div className="flex items-end"><button type="submit" className="w-full p-2 bg-indigo-600 rounded font-bold hover:bg-indigo-500">Add</button></div>
+            </form>
+
+            <div className="space-y-2">
+              {learningDebt.map(t => (
+                <div key={t.id} className="bg-slate-800 p-4 rounded-xl flex justify-between items-center border border-slate-700">
+                  <div>
+                    <h3 className="font-bold">{t.topic}</h3>
+                    <p className="text-xs text-slate-400">Priority: {t.difficulty * t.importance * t.interview_frequency} | Stage: {t.pipeline_stage}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {['Learn', 'Implement', 'Test', 'Review', 'Master'].map(stage => (
+                      <button key={stage} onClick={() => authFetch(`http://localhost:8000/learning_state/${t.id}/pipeline?pipeline_stage=${stage}`, {method:'PUT'}).then(fetchData)} className={`px-2 py-1 text-xs rounded ${t.pipeline_stage === stage ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}>{stage}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Layer 3: Sessions */}
+        {activeTab === 'sessions' && (
+          <div className="animate-in fade-in space-y-4">
+            <h2 className="font-bold text-xl">Historical Deep Work</h2>
+            {sessions.map(s => (
+              <div key={s.id} className="bg-slate-800 p-4 rounded-xl flex justify-between items-center border border-slate-700">
+                <div>
+                  <h3 className="font-bold">{s.topic}</h3>
+                  <p className="text-xs text-slate-400">{s.date} | {s.duration_minutes} mins</p>
+                </div>
+                <div className="bg-indigo-500/20 text-indigo-300 font-bold px-4 py-2 rounded-lg text-sm">
+                  Output: {s.output_quantity}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Layer 5: Career */}
         {activeTab === 'career' && (
           <div className="animate-in fade-in space-y-6">
-            <form onSubmit={handleCareerSubmit} className="bg-slate-800/50 border border-slate-700/50 p-6 rounded-xl space-y-4">
-              <h3 className="text-lg font-bold">Map Output to Resume</h3>
-              <div><label className="block text-sm mb-1 text-slate-400">Category</label>
-                <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white">
-                  <option>Git Commit</option><option>Project Feature</option><option>SQL Problem</option><option>Application</option>
-                </select>
+            <form onSubmit={addCareerOutput} className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 space-y-4">
+              <h2 className="font-bold text-xl">Log Output & GenAI Resume</h2>
+              <input type="text" placeholder="What did you do? (e.g. Built RAG chatbot using Langchain)" value={careerDesc} onChange={e=>setCareerDesc(e.target.value)} className="w-full p-2 bg-slate-900 rounded border border-slate-700" required />
+              
+              <div className="flex gap-2">
+                <button type="button" onClick={handleAIImpact} className="bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 font-bold px-4 py-2 rounded flex-1">✨ Generate AI Resume Bullet</button>
               </div>
-              <div><label className="block text-sm mb-1 text-slate-400">Description</label>
-                <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white" required />
-              </div>
-              <div><label className="block text-sm mb-1 text-slate-400">Resume Impact (Translation)</label>
-                <textarea value={resumeImpact} onChange={e => setResumeImpact(e.target.value)} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white" required placeholder="e.g. Built vector retrieval pipeline..."></textarea>
-              </div>
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 p-3 rounded font-bold">Log Output</button>
+
+              <textarea value={careerImpact} onChange={e=>setCareerImpact(e.target.value)} placeholder="AI will generate professional impact here..." className="w-full p-2 bg-slate-900 rounded border border-slate-700 h-24"></textarea>
+              <button type="submit" className="w-full p-3 bg-indigo-600 hover:bg-indigo-500 rounded font-bold">Commit to Career Timeline</button>
             </form>
           </div>
         )}

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 import models
 import schemas
@@ -9,7 +10,7 @@ from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="GrowthOS Execution Engine API")
+app = FastAPI(title="GrowthOS V9 5-Layer Execution Engine")
 
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -28,10 +29,10 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 def log_health(health: schemas.HealthCreate, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
     db_health = db.query(models.EngineHealth).filter(models.EngineHealth.date == health.date).first()
     if db_health:
-        for key, value in health.dict().items():
+        for key, value in health.model_dump().items():
             setattr(db_health, key, value)
     else:
-        db_health = models.EngineHealth(**health.dict())
+        db_health = models.EngineHealth(**health.model_dump())
         db.add(db_health)
     db.commit()
     db.refresh(db_health)
@@ -41,33 +42,59 @@ def log_health(health: schemas.HealthCreate, db: Session = Depends(get_db), curr
 def get_health_logs(skip: int = 0, limit: int = 7, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
     return db.query(models.EngineHealth).order_by(models.EngineHealth.date.desc()).offset(skip).limit(limit).all()
 
-# --- LAYER 2: LEARNING DEBT ---
-@app.post("/learning_debt/", response_model=schemas.LearningDebtResponse)
-def add_debt(debt: schemas.LearningDebtCreate, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
-    db_debt = models.EngineLearningDebt(**debt.dict())
-    db.add(db_debt)
+# --- LAYER 2: LEARNING STATE ---
+@app.post("/learning_state/", response_model=schemas.LearningStateResponse)
+def add_learning_state(state: schemas.LearningStateCreate, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    db_state = models.EngineLearningState(**state.model_dump())
+    db.add(db_state)
     db.commit()
-    db.refresh(db_debt)
-    return db_debt
+    db.refresh(db_state)
+    return db_state
 
-@app.get("/learning_debt/", response_model=List[schemas.LearningDebtResponse])
-def get_debt(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
-    return db.query(models.EngineLearningDebt).all()
+@app.get("/learning_state/", response_model=List[schemas.LearningStateResponse])
+def get_learning_state(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    return db.query(models.EngineLearningState).all()
 
-@app.put("/learning_debt/{debt_id}", response_model=schemas.LearningDebtResponse)
-def update_debt(debt_id: int, status: str, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
-    db_debt = db.query(models.EngineLearningDebt).filter(models.EngineLearningDebt.id == debt_id).first()
-    if not db_debt:
-        raise HTTPException(status_code=404, detail="Debt not found")
-    db_debt.status = status
+@app.put("/learning_state/{topic_id}/pipeline", response_model=schemas.LearningStateResponse)
+def update_pipeline(topic_id: int, pipeline_stage: str, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    db_state = db.query(models.EngineLearningState).filter(models.EngineLearningState.id == topic_id).first()
+    if not db_state:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    db_state.pipeline_stage = pipeline_stage
     db.commit()
-    db.refresh(db_debt)
-    return db_debt
+    db.refresh(db_state)
+    return db_state
 
-# --- LAYER 3: CAREER ---
+# --- LAYER 3: SESSIONS ---
+@app.post("/sessions/", response_model=schemas.SessionResponse)
+def log_session(session: schemas.SessionCreate, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    db_session = models.EngineSession(**session.model_dump())
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
+
+@app.get("/sessions/", response_model=List[schemas.SessionResponse])
+def get_sessions(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    return db.query(models.EngineSession).order_by(models.EngineSession.id.desc()).limit(20).all()
+
+# --- LAYER 4: PROJECTS ---
+@app.post("/projects/", response_model=schemas.ProjectResponse)
+def add_project(project: schemas.ProjectCreate, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    db_proj = models.EngineProject(**project.model_dump())
+    db.add(db_proj)
+    db.commit()
+    db.refresh(db_proj)
+    return db_proj
+
+@app.get("/projects/", response_model=List[schemas.ProjectResponse])
+def get_projects(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    return db.query(models.EngineProject).all()
+
+# --- LAYER 5: CAREER ---
 @app.post("/career/", response_model=schemas.CareerResponse)
 def log_career_output(output: schemas.CareerCreate, db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
-    db_output = models.EngineCareer(**output.dict())
+    db_output = models.EngineCareer(**output.model_dump())
     db.add(db_output)
     db.commit()
     db.refresh(db_output)
@@ -77,27 +104,44 @@ def log_career_output(output: schemas.CareerCreate, db: Session = Depends(get_db
 def get_career_outputs(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
     return db.query(models.EngineCareer).order_by(models.EngineCareer.id.desc()).limit(30).all()
 
-# --- EXECUTION ENGINE ---
-@app.get("/next-task/")
+# --- ALGORITHMIC ENGINES ---
+@app.get("/engine/next-task")
 def get_next_task(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
-    # Simple logic: Find a high-priority unmastered learning debt
-    next_debt = db.query(models.EngineLearningDebt).filter(models.EngineLearningDebt.status == "❌ Not Mastered").first()
+    topics = db.query(models.EngineLearningState).filter(models.EngineLearningState.pipeline_stage != "Master").all()
+    if not topics:
+        return {"current_task": "Execute Project Milestones", "reason": "No unmastered learning debt."}
     
-    if next_debt:
-        return {
-            "current_task": next_debt.topic,
-            "expected_duration": "45 minutes",
-            "reason": "This is an unresolved item on your Learning Debt list.",
-            "career_impact": "High",
-            "resume_impact": "Medium",
-            "difficulty": "High"
-        }
+    # priority = importance * interview_frequency * difficulty
+    best_topic = max(topics, key=lambda t: t.importance * t.interview_frequency * t.difficulty)
+    return {
+        "current_task": best_topic.topic,
+        "pipeline_stage": best_topic.pipeline_stage,
+        "priority_score": best_topic.importance * best_topic.interview_frequency * best_topic.difficulty,
+        "reason": f"Highest priority unmastered topic."
+    }
+
+@app.get("/engine/opportunity-cost")
+def get_opportunity_cost(db: Session = Depends(get_db), current_user: models.EngineUser = Depends(auth.get_current_user)):
+    sessions = db.query(models.EngineSession).all()
+    if not sessions:
+        return {"message": "2 hours social media = 8 missed problems (estimated)"}
+    
+    total_minutes = sum(s.duration_minutes for s in sessions if s.duration_minutes > 0)
+    total_outputs = sum(s.output_quantity for s in sessions if s.output_quantity > 0)
+    
+    if total_minutes == 0:
+        return {"message": "2 hours social media = 8 missed problems (estimated)"}
+        
+    rate_per_hour = (total_outputs / total_minutes) * 60
+    return {"message": f"2 hours social media = {round(rate_per_hour * 2, 1)} missed problems (calculated from your history)"}
+
+@app.post("/engine/generate-resume")
+def generate_resume_bullet(input_text: dict, current_user: models.EngineUser = Depends(auth.get_current_user)):
+    # Mock AI Transformer. In a real system, this hits OpenAI/Gemini.
+    text = input_text.get("text", "").lower()
+    if "rag" in text or "langchain" in text:
+        return {"resume_bullet": "Developed a Retrieval-Augmented Generation system using LangChain and vector embeddings for document question answering."}
+    elif "sql" in text:
+        return {"resume_bullet": "Optimized complex data pipelines using advanced SQL window functions and CTEs, significantly reducing query latency."}
     else:
-        return {
-            "current_task": "Build Project Feature",
-            "expected_duration": "90 minutes",
-            "reason": "Learning debt is clear. Time to execute.",
-            "career_impact": "Maximum",
-            "resume_impact": "High",
-            "difficulty": "Medium"
-        }
+        return {"resume_bullet": f"Engineered scalable solutions for {text} utilizing modern software architecture principles."}
