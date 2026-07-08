@@ -27,3 +27,10 @@ class EngineLearningDebt(Base):
     id = Column(Integer, primary_key=True, index=True)
     topic = Column(String)
     status = Column(String)
+
+class EngineUser(Base):
+    __tablename__ = "engine_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
