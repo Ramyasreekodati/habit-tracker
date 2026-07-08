@@ -2,115 +2,121 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
+import plotly.express as px
 
-st.set_page_config(page_title="GrowthOS Engine", layout="centered", page_icon="⚡")
+# Configuration
+st.set_page_config(page_title="GrowthOS V9", page_icon="⚡", layout="wide")
 
+# Theme
 st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-    .stApp { background-color: #0f172a; color: #f8fafc; }
-    h1, h2, h3 { color: #e2e8f0 !important; font-weight: 800 !important; }
-    .next-task-box { background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-left: 5px solid #6366f1; border-radius: 8px; padding: 25px; margin-bottom: 30px; }
-    .next-task-box h2 { margin-top: 0; color: #c7d2fe !important; }
-    .metric-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-    .stButton > button { background-color: #6366f1 !important; color: white !important; border: none !important; width: 100%; border-radius: 6px !important; font-weight: 600 !important; padding: 10px !important; }
-</style>
+    <style>
+    .stApp { background-color: #0f172a; color: #f1f5f9; }
+    .stButton>button { background-color: #4f46e5; color: white; font-weight: bold; }
+    .metric-box { background-color: #1e293b; padding: 20px; border-radius: 10px; border: 1px solid #334155; }
+    </style>
 """, unsafe_allow_html=True)
 
-# --- Database ---
-def init_db():
-    conn = sqlite3.connect('growthos.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS engine_health (date TEXT UNIQUE, sleep REAL, water INT, walk INT, exercise INT, meditation INT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS engine_career (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, category TEXT, description TEXT, resume_impact TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS engine_learning_debt (id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT, status TEXT)''')
-    # Seed learning debt if empty
-    c.execute("SELECT COUNT(*) FROM engine_learning_debt")
-    if c.fetchone()[0] == 0:
-        c.executemany("INSERT INTO engine_learning_debt (topic, status) VALUES (?, ?)", 
-                      [('SQL Window Functions', '❌ Not Mastered'), ('GenAI Embeddings', '✅ Mastered'), ('Python Pandas', '❌ Not Mastered')])
-    conn.commit()
-    conn.close()
+# Database Connection (Reads from the new V9 backend DB if it exists, otherwise local)
+def get_db():
+    conn = sqlite3.connect("growthos.db")
+    # Ensure tables exist for Streamlit if running independently
+    conn.execute('''CREATE TABLE IF NOT EXISTS engine_health (date TEXT, sleep REAL, water INTEGER, walk INTEGER, exercise INTEGER, meditation INTEGER)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS engine_learning_state (id INTEGER PRIMARY KEY, topic TEXT, difficulty INTEGER, importance INTEGER, interview_frequency INTEGER, pipeline_stage TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS engine_sessions (id INTEGER PRIMARY KEY, date TEXT, topic TEXT, start_time TEXT, end_time TEXT, duration_minutes INTEGER, output_quantity INTEGER)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS engine_projects (id INTEGER PRIMARY KEY, project_name TEXT, feature_name TEXT, status TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS engine_career (id INTEGER PRIMARY KEY, date TEXT, category TEXT, description TEXT, resume_impact TEXT)''')
+    return conn
 
-init_db()
+conn = get_db()
 
-def execute_query(query, params=()):
-    conn = sqlite3.connect('growthos.db')
-    c = conn.cursor()
-    c.execute(query, params)
-    conn.commit()
-    conn.close()
+st.title("⚡ GrowthOS V9: 5-Layer Execution Engine")
 
-def load_df(query):
-    conn = sqlite3.connect('growthos.db')
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+# Navigation
+tabs = st.tabs(["⚡ What's Next?", "🧘 L1 Health", "🧠 L2 Learning", "⏱️ L3 Sessions", "📈 L4 Analytics", "🚀 L5 Career"])
 
-# --- Minimalist UI ---
-tab_home, tab_health, tab_learning, tab_career = st.tabs(["⚡ What's Next?", "🧘 Health (L1)", "🧠 Learning (L2)", "🚀 Career (L3)"])
-
-with tab_home:
-    st.markdown("<div class='next-task-box'><h2>Current Task: SQL Window Functions</h2><p><b>Expected Duration:</b> 45 minutes</p><p><b>Reason:</b> This is your weakest interview area based on current Learning Debt.</p><p><b>Career Impact:</b> High | <b>Resume Impact:</b> Medium | <b>Difficulty:</b> High</p></div>", unsafe_allow_html=True)
+# --- L0: ENGINE ---
+with tabs[0]:
+    st.markdown("### Next High-Priority Task")
     
-    if st.button("✅ Mark Complete & Get Next Task"):
-        st.success("Task Completed! Next Task Queued: GenAI RAG Implementation.")
-        
-    st.divider()
-    st.subheader("Opportunity Cost Indicator")
-    st.info("💡 If you spend 2 hours on YouTube right now, you will lose the opportunity to complete 1 Project Feature or solve 8 SQL problems.")
-
-with tab_health:
-    st.header("Layer 1: Fixed Health System")
-    date_input = st.date_input("Date", datetime.date.today())
-    c1, c2, c3 = st.columns(3)
-    sleep = c1.number_input("Sleep (hrs)", 0.0, 24.0, 7.0)
-    water = c2.number_input("Water (glasses)", 0, 20, 9)
-    walk = c3.number_input("Walk (mins)", 0, 300, 45)
+    # Calculate Priority
+    topics_df = pd.read_sql_query("SELECT * FROM engine_learning_state WHERE pipeline_stage != 'Master'", conn)
     
-    if st.button("Log Health"):
-        execute_query("INSERT INTO engine_health (date, sleep, water, walk, exercise, meditation) VALUES (?,?,?,0,0) ON CONFLICT(date) DO UPDATE SET sleep=excluded.sleep, water=excluded.water, walk=excluded.walk", (str(date_input), sleep, water, walk))
-        st.success("Health logged.")
+    if not topics_df.empty:
+        topics_df['priority'] = topics_df['difficulty'] * topics_df['importance'] * topics_df['interview_frequency']
+        best_task = topics_df.loc[topics_df['priority'].idxmax()]
         
-    df_h = load_df("SELECT * FROM engine_health ORDER BY date DESC LIMIT 7")
-    if not df_h.empty:
-        avg_sleep = df_h['sleep'].mean()
-        if avg_sleep < 6.5:
-            st.error(f"🚨 Recovery Warning: Sleep average is {avg_sleep:.1f}h. Recommendation: Reduce workload temporarily.")
-        else:
-            st.success(f"✅ Recovery Optimal: Sleep average is {avg_sleep:.1f}h.")
-
-with tab_learning:
-    st.header("Layer 2: Adaptive Learning System")
-    st.subheader("Learning Debt")
-    df_debt = load_df("SELECT * FROM engine_learning_debt")
-    for _, row in df_debt.iterrows():
-        st.markdown(f"**{row['status']}** | {row['topic']}")
-        
-    with st.form("add_debt"):
-        t = st.text_input("New Topic")
-        if st.form_submit_button("Add to Debt List"):
-            execute_query("INSERT INTO engine_learning_debt (topic, status) VALUES (?, ?)", (t, "❌ Not Mastered"))
-            st.rerun()
-
-with tab_career:
-    st.header("Layer 3: Output & Career System")
-    st.subheader("Log Output & Resume Impact")
-    with st.form("career_log"):
-        cat = st.selectbox("Category", ["Project Feature", "Git Commit", "DSA Problem", "SQL Problem", "Application"])
-        desc = st.text_input("Description (What did you do?)")
-        impact = st.text_area("Resume Impact (How does this translate to a resume bullet?)")
-        if st.form_submit_button("Log Output"):
-            execute_query("INSERT INTO engine_career (date, category, description, resume_impact) VALUES (?,?,?,?)", (str(datetime.date.today()), cat, desc, impact))
-            st.success("Output logged and mapped to resume!")
-            
-    st.divider()
-    st.subheader("Momentum Tracker (Last 30 Days)")
-    df_c = load_df("SELECT category, COUNT(*) as count FROM engine_career GROUP BY category")
-    if not df_c.empty:
-        cols = st.columns(len(df_c))
-        for i, row in df_c.iterrows():
-            cols[i].metric(row['category'], row['count'])
+        st.info(f"**Highest Priority Task:** {best_task['topic']}")
+        st.write(f"**Stage:** {best_task['pipeline_stage']} | **Priority Score:** {best_task['priority']}")
     else:
-        st.write("No outputs logged yet.")
+        st.success("No active learning debt! Focus on projects.")
+        
+    st.markdown("---")
+    st.markdown("### Opportunity Cost Engine")
+    sessions_df = pd.read_sql_query("SELECT * FROM engine_sessions", conn)
+    if not sessions_df.empty and sessions_df['duration_minutes'].sum() > 0:
+        rate = (sessions_df['output_quantity'].sum() / sessions_df['duration_minutes'].sum()) * 60
+        st.warning(f"💡 If you spend 2 hours on social media right now, you will lose the opportunity to complete {round(rate * 2, 1)} problems based on your historical velocity.")
+    else:
+        st.warning("💡 Log more sessions to calculate your actual opportunity cost.")
+
+# --- L1: HEALTH ---
+with tabs[1]:
+    st.markdown("### Log Health")
+    with st.form("health_form"):
+        col1, col2, col3 = st.columns(3)
+        sleep = col1.number_input("Sleep (hrs)", min_value=0.0, max_value=24.0, value=7.0, step=0.5)
+        water = col2.number_input("Water (glasses)", min_value=0, max_value=20, value=8)
+        walk = col3.number_input("Walk (mins)", min_value=0, max_value=300, value=45)
+        if st.form_submit_button("Log Health"):
+            conn.execute("INSERT INTO engine_health (date, sleep, water, walk, exercise, meditation) VALUES (?, ?, ?, ?, ?, ?)", (str(datetime.date.today()), sleep, water, walk, 0, 0))
+            conn.commit()
+            st.success("Health logged!")
+
+# --- L2: LEARNING ---
+with tabs[2]:
+    st.markdown("### Add Learning Debt")
+    with st.form("learning_form"):
+        topic = st.text_input("Topic (e.g. Window Functions)")
+        col1, col2, col3 = st.columns(3)
+        diff = col1.slider("Difficulty", 1, 10, 5)
+        imp = col2.slider("Importance", 1, 10, 5)
+        freq = col3.slider("Interview Freq", 1, 10, 5)
+        if st.form_submit_button("Add Topic"):
+            conn.execute("INSERT INTO engine_learning_state (topic, difficulty, importance, interview_frequency, pipeline_stage) VALUES (?, ?, ?, ?, ?)", (topic, diff, imp, freq, "Learn"))
+            conn.commit()
+            st.success("Topic added!")
+
+# --- L3: SESSIONS ---
+with tabs[3]:
+    st.markdown("### Log Deep Work Session")
+    with st.form("session_form"):
+        topic = st.text_input("Session Topic")
+        dur = st.number_input("Duration (minutes)", min_value=1, value=60)
+        outq = st.number_input("Output Quantity (Problems/Features completed)", min_value=0, value=1)
+        if st.form_submit_button("Log Session"):
+            conn.execute("INSERT INTO engine_sessions (date, topic, start_time, end_time, duration_minutes, output_quantity) VALUES (?, ?, ?, ?, ?, ?)", (str(datetime.date.today()), topic, "Started", "Ended", dur, outq))
+            conn.commit()
+            st.success("Session logged!")
+
+# --- L4: ANALYTICS ---
+with tabs[4]:
+    st.markdown("### Deep Work Analytics")
+    df = pd.read_sql_query("SELECT date, SUM(output_quantity) as total_output FROM engine_sessions GROUP BY date ORDER BY date", conn)
+    if not df.empty:
+        fig = px.bar(df, x="date", y="total_output", title="Output Velocity Over Time", template="plotly_dark", color_discrete_sequence=["#8b5cf6"])
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.write("No session data yet.")
+
+# --- L5: CAREER ---
+with tabs[5]:
+    st.markdown("### Log Career Output")
+    with st.form("career_form"):
+        desc = st.text_area("What did you do? (e.g. Built RAG chatbot)")
+        if st.form_submit_button("Generate AI Resume Bullet & Log"):
+            # Mock AI Transformer
+            impact = f"Engineered scalable solutions for {desc} utilizing modern software architecture principles."
+            if "rag" in desc.lower(): impact = "Developed a Retrieval-Augmented Generation system using vector embeddings for document question answering."
+            conn.execute("INSERT INTO engine_career (date, category, description, resume_impact) VALUES (?, ?, ?, ?)", (str(datetime.date.today()), "Project Feature", desc, impact))
+            conn.commit()
+            st.success(f"Logged! Generated Impact: {impact}")
