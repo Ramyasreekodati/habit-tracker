@@ -4,8 +4,9 @@ import random
 import os
 
 def seed_db():
-    if os.path.exists('growthos.db'):
-        os.remove('growthos.db')
+    db_path = '../growthos.db'
+    if os.path.exists(db_path):
+        os.remove(db_path)
         print("Removed legacy database.")
 
     # Recreate tables via FastAPI models
