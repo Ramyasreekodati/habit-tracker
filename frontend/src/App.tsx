@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import CalendarHeatmap from 'react-calendar-heatmap';
+import 'react-calendar-heatmap/dist/styles.css';
 
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -253,6 +255,21 @@ function App() {
         {/* Analytics Dashboard */}
         {activeTab === 'analytics' && (
           <div className="animate-in fade-in space-y-6">
+            <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
+              <h2 className="font-bold text-xl mb-4">Deep Work Consistency Heatmap</h2>
+              <div className="text-sm">
+                <CalendarHeatmap
+                  startDate={new Date(new Date().setMonth(new Date().getMonth() - 3))}
+                  endDate={new Date()}
+                  values={sessions.map(s => ({ date: s.date, count: s.output_quantity }))}
+                  classForValue={(value) => {
+                    if (!value || value.count === 0) return 'color-empty';
+                    return `color-github-${Math.min(value.count, 4)}`;
+                  }}
+                />
+              </div>
+            </div>
+
             <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
               <h2 className="font-bold text-xl mb-4">Output Velocity Over Time</h2>
               <div className="h-64 w-full">
