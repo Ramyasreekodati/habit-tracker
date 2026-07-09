@@ -59,6 +59,14 @@ class WeeklyPlan(Base):
     task_text = Column(String)
     completed = Column(Boolean, default=False)
 
+class MonthlyReflection(Base):
+    __tablename__ = "monthly_reflections"
+    id = Column(Integer, primary_key=True, index=True)
+    year_month = Column(String, index=True, unique=True)
+    wins = Column(String, default="")
+    improvements = Column(String, default="")
+    notes = Column(String, default="")
+
 Base.metadata.create_all(bind=engine)
 
 def seed_db():
@@ -77,14 +85,13 @@ def seed_db():
             habit.created_at = past_date
             db.add(habit)
             
-        # Add mock monthly goals
         curr_ym = f"{date.today().year}-{date.today().month:02d}"
         db.add(MonthlyGoal(year_month=curr_ym, goal_text="Finish ML Course", completed=False))
         db.add(MonthlyGoal(year_month=curr_ym, goal_text="Build Portfolio Website", completed=False))
-        
-        # Add mock weekly plans
         db.add(WeeklyPlan(year_month=curr_ym, week_number=1, task_text="Learn SQL Joins", completed=True))
         db.add(WeeklyPlan(year_month=curr_ym, week_number=2, task_text="Apply to Internships", completed=False))
+        
+        db.add(MonthlyReflection(year_month=curr_ym, wins="Consistency with reading.", improvements="Need to sleep earlier.", notes="Exams this month made it hard."))
             
         db.commit()
     db.close()
@@ -146,12 +153,13 @@ st.set_page_config(page_title="GrowthOS Portfolio", layout="wide")
 st.markdown("""
 <style>
     .stApp { background-color: #F8F9FA; color: #202124; }
-    h1, h2, h3 { font-family: 'Inter', sans-serif; font-weight: 600; color: #1f1f1f; }
+    h1, h2, h3, h4, h5 { font-family: 'Inter', sans-serif; font-weight: 600; color: #1f1f1f; }
     .metric-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 2px rgba(60,64,67,0.3); text-align: center; }
     .kpi-card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(60,64,67,0.1); text-align: center; height: 100%; border-top: 4px solid #1a73e8; }
     .kpi-value { font-size: 3rem; font-weight: bold; color: #1a73e8; margin-bottom: 0;}
     .kpi-label { font-size: 1.1rem; color: #5f6368; margin-top: 0; text-transform: uppercase; letter-spacing: 1px;}
     .quote-box { background: #e8f0fe; padding: 25px; border-left: 5px solid #1a73e8; border-radius: 4px; font-style: italic; font-size: 1.2rem; color: #1a73e8; margin-bottom: 20px;}
+    .footer { text-align: center; color: #9aa0a6; font-size: 0.8rem; margin-top: 50px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -179,33 +187,42 @@ num_days = calendar.monthrange(year, month)[1]
 curr_ym = f"{year}-{month:02d}"
 
 # CRUD Expander
-with st.expander("⚙️ Manage Habits"):
-    with st.form("add_habit_form"):
-        st.write("Add New Habit")
-        c1, c2, c3 = st.columns(3)
-        h_name = c1.text_input("Name")
-        h_cat = c2.selectbox("Category", ["Health", "Career", "Learning", "Personal"])
-        h_goal = c3.number_input("Monthly Goal (Days)", min_value=1, max_value=31, value=20)
-        h_reward = st.text_input("Reward for achieving goal")
-        
-        if st.form_submit_button("Add Habit"):
-            if h_name:
-                new_h = Habit(name=h_name, category=h_cat, monthly_goal=h_goal, reward=h_reward, created_at=datetime.utcnow())
-                db.add(new_h)
+with st.expander("⚙️ Manage Habits & Data"):
+    tab1, tab2, tab3 = st.tabs(["Add Habit", "Archive/Restore", "Import / Restore Data"])
+    
+    with tab1:
+        with st.form("add_habit_form"):
+            c1, c2, c3 = st.columns(3)
+            h_name = c1.text_input("Name")
+            h_cat = c2.selectbox("Category", ["Health", "Career", "Learning", "Personal"])
+            h_goal = c3.number_input("Monthly Goal (Days)", min_value=1, max_value=31, value=20)
+            h_reward = st.text_input("Reward for achieving goal")
+            if st.form_submit_button("Add Habit"):
+                if h_name:
+                    new_h = Habit(name=h_name, category=h_cat, monthly_goal=h_goal, reward=h_reward, created_at=datetime.utcnow())
+                    db.add(new_h)
+                    db.commit()
+                    st.rerun()
+
+    with tab2:
+        all_h = db.query(Habit).all()
+        for h in all_h:
+            colA, colB = st.columns([4,1])
+            colA.write(f"{h.name} ({'Active' if h.is_active else 'Archived'})")
+            btn_label = "Archive" if h.is_active else "Restore"
+            if colB.button(btn_label, key=f"toggle_{h.id}"):
+                h.is_active = not h.is_active
                 db.commit()
                 st.rerun()
-
-    st.write("---")
-    st.write("Archive / Restore Existing Habits")
-    all_h = db.query(Habit).all()
-    for h in all_h:
-        colA, colB = st.columns([4,1])
-        colA.write(f"{h.name} ({'Active' if h.is_active else 'Archived'})")
-        btn_label = "Archive" if h.is_active else "Restore"
-        if colB.button(btn_label, key=f"toggle_{h.id}"):
-            h.is_active = not h.is_active
-            db.commit()
-            st.rerun()
+                
+    with tab3:
+        st.write("Restore from Database Backup (.db)")
+        uploaded_file = st.file_uploader("Upload SQLite Database Backup", type=['db', 'sqlite'])
+        if uploaded_file is not None:
+            if st.button("Restore Database"):
+                with open("growthos.db", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.success("Database restored successfully! Please refresh the page.")
 
 habits = db.query(Habit).filter(Habit.is_active == True).order_by(Habit.display_order).all()
 
@@ -231,11 +248,12 @@ df_data = {}
 
 total_completions_this_month = 0
 total_goals_achieved = 0
+master_best_streak = 0
 
 for h in habits:
     row_data = {
         "Goal": h.monthly_goal,
-        "Progress": "",
+        "Progress": 0.0,
         "Streak": "",
         "Reward": ""
     }
@@ -260,8 +278,8 @@ for h in habits:
             else:
                 row_data[str(d)] = ""
                 
-    progress_pct = (completed_this_month / h.monthly_goal) * 100 if h.monthly_goal > 0 else 0
-    row_data["Progress"] = f"{min(int(progress_pct), 999)}%"
+    progress_pct = min((completed_this_month / h.monthly_goal), 1.0) if h.monthly_goal > 0 else 0
+    row_data["Progress"] = progress_pct
     
     if completed_this_month >= h.monthly_goal:
         total_goals_achieved += 1
@@ -273,14 +291,26 @@ for h in habits:
         c_streak, b_streak = get_streak(df_all_logs, h.id)
     else:
         c_streak, b_streak = 0, 0
+        
+    if b_streak > master_best_streak:
+        master_best_streak = b_streak
+        
     row_data["Streak"] = f"{c_streak} / {b_streak}"
     
     df_data[h.name] = row_data
 
 df = pd.DataFrame.from_dict(df_data, orient='index')
+
+# Streamlit ProgressColumn for Sparklines!
 col_config = {
     "Goal": st.column_config.NumberColumn("Goal", disabled=True),
-    "Progress": st.column_config.TextColumn("Progress", disabled=True),
+    "Progress": st.column_config.ProgressColumn(
+        "Progress (Sparkline)",
+        help="Monthly goal progress",
+        format="%.2f",
+        min_value=0,
+        max_value=1,
+    ),
     "Streak": st.column_config.TextColumn("Streaks", disabled=True),
     "Reward": st.column_config.TextColumn("Reward", disabled=True)
 }
@@ -289,10 +319,13 @@ for d in days_list:
 
 edited_df = st.data_editor(df, use_container_width=True, height=350, column_config=col_config)
 
-# Export Data Button
+# Export Data Buttons
 with col_export:
+    c1, c2 = st.columns(2)
     csv = df.to_csv()
-    st.download_button(label="📥 Export Monthly Grid as CSV", data=csv, file_name=f'habit_tracker_{curr_ym}.csv', mime='text/csv')
+    c1.download_button(label="📥 Export Grid CSV", data=csv, file_name=f'tracker_{curr_ym}.csv', mime='text/csv')
+    with open("growthos.db", "rb") as f:
+        c2.download_button(label="📦 Export SQLite DB Backup", data=f, file_name=f'growthos_backup_{curr_ym}.db', mime='application/octet-stream')
 
 
 # Save grid changes
@@ -338,7 +371,7 @@ sc3.metric("Productivity %", f"{int(prod_today)}%")
 st.write("---")
 
 # ---------------------------------------------------------
-# LOWER DASHBOARD (Goals, Planning, KPIs)
+# LOWER DASHBOARD (Goals, Planning, Reflections, KPIs)
 # ---------------------------------------------------------
 st.markdown("### Monthly Dashboard")
 
@@ -386,5 +419,28 @@ with lb_right:
     with kpi_col2:
         achieved_pct = (total_goals_achieved / len(habits) * 100) if habits else 0
         st.markdown(f"<div class='kpi-card'><p class='kpi-value'>{achieved_pct:.1f}%</p><p class='kpi-label'>Goals Achieved</p></div>", unsafe_allow_html=True)
+
+st.write("---")
+# Monthly Reflections
+st.markdown("### Monthly Reflection Notes")
+reflection = db.query(MonthlyReflection).filter(MonthlyReflection.year_month == curr_ym).first()
+if not reflection:
+    reflection = MonthlyReflection(year_month=curr_ym)
+    db.add(reflection)
+    db.commit()
+
+with st.form("reflection_form"):
+    r_wins = st.text_area("What worked well this month?", value=reflection.wins)
+    r_improvements = st.text_area("What needs improvement?", value=reflection.improvements)
+    r_notes = st.text_area("General Notes / Overrides", value=reflection.notes)
+    if st.form_submit_button("Save Reflections"):
+        reflection.wins = r_wins
+        reflection.improvements = r_improvements
+        reflection.notes = r_notes
+        db.commit()
+        st.success("Reflections saved!")
+
+# Footer Data Ownership
+st.markdown(f"<div class='footer'>Data Ownership Metadata<br>Total Habits Tracked: {len(db.query(Habit).all())} | Master Best Streak: {master_best_streak} days | Last Updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}</div>", unsafe_allow_html=True)
 
 db.close()
