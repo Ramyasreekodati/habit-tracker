@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run the DB seeder automatically to ensure tables exist
-RUN python create_admin.py
+RUN python seed_v11_data.py
 
 EXPOSE 8000
 

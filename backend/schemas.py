@@ -116,3 +116,48 @@ class CareerBase(BaseModel):
 class CareerResponse(CareerBase):
     id: int
     class Config: from_attributes = True
+
+# --- V11 PHASE 1: SURVIVAL DASHBOARD ---
+class HabitBase(BaseModel):
+    name: str
+    category: str
+    frequency: str = "Daily"
+
+class HabitCreate(HabitBase): pass
+
+class HabitResponse(HabitBase):
+    id: int
+    class Config: from_attributes = True
+
+class HabitLogBase(BaseModel):
+    habit_id: int
+    date: str
+    completed: bool = False
+    duration: int = 0
+
+class HabitLogCreate(HabitLogBase): pass
+
+class HabitLogResponse(HabitLogBase):
+    id: int
+    class Config: from_attributes = True
+
+# --- V11 PHASE 3: HANSEI REFLECTION ---
+class HanseiReflectionBase(BaseModel):
+    date: str
+    finished: str
+    distracted: str
+    mistake: str
+    change_tomorrow: str
+
+class HanseiReflectionCreate(HanseiReflectionBase): pass
+
+class HanseiReflectionResponse(HanseiReflectionBase):
+    id: int
+    class Config: from_attributes = True
+
+# --- V11 PHASE 4: AI ANALYSIS LAYER ---
+class AIAnalysisResponse(BaseModel):
+    patterns: List[str]
+    risks: List[str]
+    recommendations: List[str]
+

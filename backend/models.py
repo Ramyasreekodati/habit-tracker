@@ -98,3 +98,31 @@ class EngineCareer(Base):
     category = Column(String)
     description = Column(String)
     resume_impact = Column(String)
+
+# --- V11 PHASE 1: SURVIVAL DASHBOARD ---
+class Habit(Base):
+    __tablename__ = "habits"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    category = Column(String)  # Career, MBA, Discipline, Bad Habits
+    frequency = Column(String, default="Daily")
+
+class HabitLog(Base):
+    __tablename__ = "habit_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    habit_id = Column(Integer, ForeignKey("habits.id"))
+    date = Column(String, index=True)
+    completed = Column(Boolean, default=False)
+    duration = Column(Integer, default=0) # in minutes
+    
+    habit = relationship("Habit")
+
+# --- V11 PHASE 3: HANSEI REFLECTION ---
+class HanseiReflection(Base):
+    __tablename__ = "hansei_reflections"
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String, unique=True, index=True)
+    finished = Column(String)
+    distracted = Column(String)
+    mistake = Column(String)
+    change_tomorrow = Column(String)

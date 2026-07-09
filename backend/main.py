@@ -8,10 +8,25 @@ import models
 import schemas
 import auth
 from database import engine, get_db
+import os
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fastapi.middleware.cors import CORSMiddleware
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="GrowthOS V10 Temporal Architecture")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -99,3 +114,127 @@ def get_projects(db: Session = Depends(get_db)):
 @app.get("/career/", response_model=List[schemas.CareerResponse])
 def get_career(db: Session = Depends(get_db)):
     return db.query(models.EngineCareer).all()
+
+# --- V11 PHASE 1: SURVIVAL DASHBOARD ---
+@app.get("/habits/", response_model=List[schemas.HabitResponse])
+def get_habits(db: Session = Depends(get_db)):
+    return db.query(models.Habit).all()
+
+@app.post("/habits/", response_model=schemas.HabitResponse)
+def create_habit(habit: schemas.HabitCreate, db: Session = Depends(get_db)):
+    db_habit = models.Habit(**habit.model_dump())
+    db.add(db_habit)
+    db.commit()
+    db.refresh(db_habit)
+    return db_habit
+
+@app.get("/habit_logs/", response_model=List[schemas.HabitLogResponse])
+def get_habit_logs(date: str = None, db: Session = Depends(get_db)):
+    query = db.query(models.HabitLog)
+    if date:
+        query = query.filter(models.HabitLog.date == date)
+    return query.all()
+
+@app.post("/habit_logs/", response_model=schemas.HabitLogResponse)
+def log_habit(log: schemas.HabitLogCreate, db: Session = Depends(get_db)):
+    db_log = db.query(models.HabitLog).filter(
+        models.HabitLog.habit_id == log.habit_id,
+        models.HabitLog.date == log.date
+    ).first()
+    if db_log:
+        db_log.completed = log.completed
+        db_log.duration = log.duration
+    else:
+        db_log = models.HabitLog(**log.model_dump())
+        db.add(db_log)
+    db.commit()
+    db.refresh(db_log)
+    return db_log
+
+# --- V11 PHASE 3: HANSEI REFLECTION ---
+@app.get("/hansei/", response_model=List[schemas.HanseiReflectionResponse])
+def get_hansei_reflections(db: Session = Depends(get_db)):
+    return db.query(models.HanseiReflection).order_by(models.HanseiReflection.date.desc()).all()
+
+@app.post("/hansei/", response_model=schemas.HanseiReflectionResponse)
+def log_hansei(reflection: schemas.HanseiReflectionCreate, db: Session = Depends(get_db)):
+    db_reflection = db.query(models.HanseiReflection).filter(models.HanseiReflection.date == reflection.date).first()
+    if db_reflection:
+        db_reflection.finished = reflection.finished
+        db_reflection.distracted = reflection.distracted
+        db_reflection.mistake = reflection.mistake
+        db_reflection.change_tomorrow = reflection.change_tomorrow
+    else:
+        db_reflection = models.HanseiReflection(**reflection.model_dump())
+        db.add(db_reflection)
+    db.commit()
+    db.refresh(db_reflection)
+    return db_reflection
+
+# --- V11 PHASE 4: AI ANALYSIS LAYER ---
+@app.get("/ai/analyze", response_model=schemas.AIAnalysisResponse)
+def analyze_data(db: Session = Depends(get_db)):
+    logs = db.query(models.HabitLog).all()
+    reflections = db.query(models.HanseiReflection).all()
+    
+    total_logs = len(logs)
+    if total_logs == 0:
+        return {
+            "patterns": ["Not enough data to detect patterns yet. Keep logging!"],
+            "risks": ["System abandonment risk is high if you do not track your habits."],
+            "recommendations": ["Start by checking off one habit today to build momentum."]
+        }
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key or api_key == "your_openai_api_key_here":
+        # Fallback to mock if no key
+        return {
+            "patterns": [
+                "You complete Python 90% of the time.",
+                "You complete DSA only 35% of the time.",
+                "Most DSA failures happen after 7 PM."
+            ],
+            "risks": [
+                "Your sleep has dropped below 6 hours for 5 days.",
+                "Your productivity dropped by 22%.",
+                "You may experience burnout."
+            ],
+            "recommendations": [
+                "Move DSA to morning hours.",
+                "Reduce study sessions longer than 2 hours.",
+                "Add a break after SQL sessions.",
+                "(To get real AI insights, add your OPENAI_API_KEY to backend/.env)"
+            ]
+        }
+        
+    # Make the real OpenAI call
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    
+    # Simple prompt assembly
+    data_summary = f"Total logs: {len(logs)}, Total reflections: {len(reflections)}\n"
+    for r in reflections[-3:]:
+        data_summary += f"Date: {r.date}\nFinished: {r.finished}\nDistracted: {r.distracted}\nMistake: {r.mistake}\nChange: {r.change_tomorrow}\n"
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a productivity AI coach analyzing a user's habits. Return ONLY JSON with three keys: 'patterns' (list of strings), 'risks' (list of strings), 'recommendations' (list of strings)."},
+                {"role": "user", "content": f"Analyze this recent habit and reflection data:\n{data_summary}"}
+            ]
+        )
+        content = response.choices[0].message.content
+        ai_data = json.loads(content)
+        return {
+            "patterns": ai_data.get("patterns", ["Analyzed successfully."]),
+            "risks": ai_data.get("risks", ["None detected."]),
+            "recommendations": ai_data.get("recommendations", ["Keep up the good work!"])
+        }
+    except Exception as e:
+        return {
+            "patterns": ["Failed to connect to OpenAI."],
+            "risks": [str(e)],
+            "recommendations": ["Check your API key and connection."]
+        }
+
