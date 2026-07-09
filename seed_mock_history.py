@@ -4,9 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import sys
 import os
+import calendar
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from app import Habit, HabitLog, EnergyLog, SessionLocal
+from app import Habit, HabitLog, SessionLocal
 
 def seed_history():
     db = SessionLocal()
@@ -17,47 +18,33 @@ def seed_history():
         return
         
     today = date.today()
-    start_date = today - timedelta(days=30) # 1 month
+    # Go back 2 full months
+    start_date = today.replace(day=1) - timedelta(days=60)
+    end_date = today
     
-    print("Seeding 30 days of V1 data...")
+    print("Seeding ~60 days of Final V1 data...")
     
-    for i in range(30):
-        current_date = (start_date + timedelta(days=i)).isoformat()
-        
-        # Energy
-        morning_e = random.choice(["High", "High", "Medium", "Low"])
-        afternoon_e = random.choice(["High", "Medium", "Medium", "Low"])
-        night_e = random.choice(["High", "Medium", "Low", "Low"])
-        
-        existing_e = db.query(EnergyLog).filter(EnergyLog.date == current_date).first()
-        if not existing_e:
-            elog = EnergyLog(date=current_date, morning_energy=morning_e, afternoon_energy=afternoon_e, night_energy=night_e)
-            db.add(elog)
-            
+    curr = start_date
+    while curr <= end_date:
+        current_date_str = curr.isoformat()
         is_good_day = random.random() > 0.3
         
         for h in habits:
-            existing_log = db.query(HabitLog).filter(HabitLog.habit_id == h.id, HabitLog.date == current_date).first()
+            existing_log = db.query(HabitLog).filter(HabitLog.habit_id == h.id, HabitLog.log_date == current_date_str).first()
             if not existing_log:
-                if h.category in ["AI Core", "MBA"]:
-                    planned = h.default_planned_time
-                    completed = random.random() < (0.8 if is_good_day else 0.4)
-                    if completed:
-                        actual = planned
-                        friction = None
-                    else:
-                        actual = int(planned * random.uniform(0.1, 0.7))
-                        friction = random.choice(["Too difficult", "Too boring", "Distracted", "Too large", "No clear next step"])
-                    tod = random.choice(["Morning", "Afternoon", "Night"])
+                if is_good_day:
+                    status = random.choices(["completed", "missed", "skipped", ""], weights=[0.8, 0.1, 0.05, 0.05])[0]
                 else:
-                    planned = 0
-                    actual = 0
-                    completed = random.random() < (0.9 if is_good_day else 0.5)
-                    friction = "Distracted" if not completed else None
-                    tod = "Morning"
+                    status = random.choices(["completed", "missed", "skipped", ""], weights=[0.2, 0.6, 0.1, 0.1])[0]
                 
-                log = HabitLog(habit_id=h.id, date=current_date, completed=completed, planned_duration=planned, duration=actual, time_of_day=tod, friction_reason=friction)
+                # Make today have mostly "" so user can fill it
+                if curr == end_date:
+                    status = ""
+                    
+                log = HabitLog(habit_id=h.id, log_date=current_date_str, status=status)
                 db.add(log)
+                
+        curr += timedelta(days=1)
                 
     db.commit()
     db.close()
