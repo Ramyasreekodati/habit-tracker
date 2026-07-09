@@ -6,57 +6,59 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from app import Habit, HabitLog, HanseiReflection, SessionLocal
+from app import Habit, HabitLog, EnergyLog, SessionLocal
 
 def seed_history():
     db = SessionLocal()
     
-    # Get all habits
     habits = db.query(Habit).all()
     if not habits:
-        print("No habits found. Please run app.py once to initialize habits.")
+        print("No habits found. Please run app.py once to initialize.")
         return
         
-    habit_ids = [h.id for h in habits]
-    
     today = date.today()
-    start_date = today - timedelta(days=180) # 6 months
+    start_date = today - timedelta(days=30) # 1 month
     
-    print("Seeding 6 months of historical data...")
+    print("Seeding 30 days of V1 data...")
     
-    for i in range(180):
+    for i in range(30):
         current_date = (start_date + timedelta(days=i)).isoformat()
         
-        # Random chance of having a good day (80%) vs bad day (20%)
-        is_good_day = random.random() > 0.2
+        # Energy
+        morning_e = random.choice(["High", "High", "Medium", "Low"])
+        afternoon_e = random.choice(["High", "Medium", "Medium", "Low"])
+        night_e = random.choice(["High", "Medium", "Low", "Low"])
+        
+        existing_e = db.query(EnergyLog).filter(EnergyLog.date == current_date).first()
+        if not existing_e:
+            elog = EnergyLog(date=current_date, morning_energy=morning_e, afternoon_energy=afternoon_e, night_energy=night_e)
+            db.add(elog)
+            
+        is_good_day = random.random() > 0.3
         
         for h in habits:
-            # Bad habits have a 20% chance of being "completed" (which means failed) on a good day, 80% on a bad day
-            if h.category == "Bad Habits":
-                completed = random.random() < (0.2 if is_good_day else 0.8)
-            else:
-                completed = random.random() < (0.8 if is_good_day else 0.3)
-                
-            duration = random.choice([0, 30, 60, 90, 120]) if (completed and h.category in ["Career", "MBA"]) else 0
-            
-            # Check if log already exists
             existing_log = db.query(HabitLog).filter(HabitLog.habit_id == h.id, HabitLog.date == current_date).first()
             if not existing_log:
-                log = HabitLog(habit_id=h.id, date=current_date, completed=completed, duration=duration)
+                if h.category in ["AI Core", "MBA"]:
+                    planned = h.default_planned_time
+                    completed = random.random() < (0.8 if is_good_day else 0.4)
+                    if completed:
+                        actual = planned
+                        friction = None
+                    else:
+                        actual = int(planned * random.uniform(0.1, 0.7))
+                        friction = random.choice(["Too difficult", "Too boring", "Distracted", "Too large", "No clear next step"])
+                    tod = random.choice(["Morning", "Afternoon", "Night"])
+                else:
+                    planned = 0
+                    actual = 0
+                    completed = random.random() < (0.9 if is_good_day else 0.5)
+                    friction = "Distracted" if not completed else None
+                    tod = "Morning"
+                
+                log = HabitLog(habit_id=h.id, date=current_date, completed=completed, planned_duration=planned, duration=actual, time_of_day=tod, friction_reason=friction)
                 db.add(log)
                 
-        # Seed Hansei Reflection
-        existing_hansei = db.query(HanseiReflection).filter(HanseiReflection.date == current_date).first()
-        if not existing_hansei and is_good_day and random.random() > 0.5:
-            r = HanseiReflection(
-                date=current_date,
-                finished="Completed my daily tasks and studied.",
-                distracted="A bit of social media.",
-                mistake="Started working too late.",
-                change_tomorrow="Wake up 30 mins earlier."
-            )
-            db.add(r)
-            
     db.commit()
     db.close()
     print("Seeding complete!")

@@ -4,15 +4,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, timedelta
 import os
-import json
-import calendar
-import numpy as np
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
-from openai import OpenAI
 
 # ---------------------------------------------------------
-# DATABASE CONFIGURATION
+# DATABASE CONFIGURATION (V1.0)
 # ---------------------------------------------------------
 engine = create_engine("sqlite:///growthos.db", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -23,6 +19,7 @@ class Habit(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     category = Column(String)
+    default_planned_time = Column(Integer, default=0) # in minutes
 
 class HabitLog(Base):
     __tablename__ = "habit_logs"
@@ -30,17 +27,26 @@ class HabitLog(Base):
     habit_id = Column(Integer, ForeignKey("habits.id"))
     date = Column(String, index=True)
     completed = Column(Boolean, default=False)
-    duration = Column(Integer, default=0)
+    planned_duration = Column(Integer, default=0)
+    duration = Column(Integer, default=0) # actual time
+    time_of_day = Column(String) # Morning, Afternoon, Night
+    friction_reason = Column(String) # Too difficult, Too boring, Too large, Distracted, Didn't know next step
     habit = relationship("Habit")
 
-class HanseiReflection(Base):
-    __tablename__ = "hansei_reflections"
+class EnergyLog(Base):
+    __tablename__ = "energy_logs"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(String, unique=True, index=True)
-    finished = Column(String)
-    distracted = Column(String)
-    mistake = Column(String)
-    change_tomorrow = Column(String)
+    morning_energy = Column(String, default="Medium")
+    afternoon_energy = Column(String, default="Medium")
+    night_energy = Column(String, default="Medium")
+
+class RoadmapItem(Base):
+    __tablename__ = "roadmap_items"
+    id = Column(Integer, primary_key=True, index=True)
+    topic = Column(String)
+    category = Column(String)
+    progress = Column(Integer, default=0)
 
 Base.metadata.create_all(bind=engine)
 
@@ -48,24 +54,30 @@ def seed_db():
     db = SessionLocal()
     if db.query(Habit).count() == 0:
         default_habits = [
-            {"name": "Python", "category": "Career"},
-            {"name": "SQL", "category": "Career"},
-            {"name": "DSA", "category": "Career"},
-            {"name": "GenAI", "category": "Career"},
-            {"name": "Project Work", "category": "Career"},
-            {"name": "Classes", "category": "MBA"},
-            {"name": "Assignments", "category": "MBA"},
-            {"name": "Meditation", "category": "Discipline"},
-            {"name": "Housework", "category": "Discipline"},
-            {"name": "Sleep", "category": "Discipline"},
-            {"name": "Exercise", "category": "Discipline"},
-            {"name": "Phone overuse", "category": "Bad Habits"},
-            {"name": "Procrastination", "category": "Bad Habits"},
-            {"name": "Overthinking", "category": "Bad Habits"},
-            {"name": "Late sleeping", "category": "Bad Habits"}
+            {"name": "Python", "category": "AI Core", "default_planned_time": 120},
+            {"name": "SQL", "category": "AI Core", "default_planned_time": 60},
+            {"name": "DSA", "category": "AI Core", "default_planned_time": 60},
+            {"name": "GenAI Projects", "category": "AI Core", "default_planned_time": 120},
+            {"name": "MBA Assignment", "category": "MBA", "default_planned_time": 120},
+            {"name": "Classes", "category": "MBA", "default_planned_time": 180},
+            {"name": "Meditation", "category": "Discipline", "default_planned_time": 0},
+            {"name": "Exercise", "category": "Discipline", "default_planned_time": 0}
         ]
         for h in default_habits:
             db.add(Habit(**h))
+        
+        roadmap_items = [
+            {"topic": "Python Basics", "category": "Foundations", "progress": 100},
+            {"topic": "Pandas/NumPy", "category": "Foundations", "progress": 80},
+            {"topic": "SQL Window Functions", "category": "Foundations", "progress": 70},
+            {"topic": "Machine Learning", "category": "AI Core", "progress": 40},
+            {"topic": "Deep Learning", "category": "AI Core", "progress": 10},
+            {"topic": "Transformers", "category": "GenAI", "progress": 20},
+            {"topic": "RAG", "category": "GenAI", "progress": 10}
+        ]
+        for r in roadmap_items:
+            db.add(RoadmapItem(**r))
+            
         db.commit()
     db.close()
 
@@ -74,260 +86,216 @@ seed_db()
 # ---------------------------------------------------------
 # UI CONFIGURATION & STYLING
 # ---------------------------------------------------------
-st.set_page_config(page_title="GrowthOS V11", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="GrowthOS", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
-    /* Premium aesthetics */
-    .stApp { background-color: #0E1117; color: #FAFAFA; }
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
     h1, h2, h3 { font-family: 'Inter', sans-serif; font-weight: 600; }
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: transparent; border-radius: 4px 4px 0px 0px; gap: 1px; padding-top: 10px; padding-bottom: 10px; font-weight: 600; }
-    .stTabs [aria-selected="true"] { border-bottom-color: #00FFAA !important; color: #00FFAA !important; }
-    .metric-card { background: #161B22; padding: 20px; border-radius: 12px; border: 1px solid #30363D; text-align: center; }
-    .metric-value { font-size: 2rem; font-weight: bold; color: #00FFAA; }
-    .metric-label { font-size: 0.9rem; color: #8B949E; text-transform: uppercase; letter-spacing: 1px; }
+    .metric-card { background: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; text-align: center; margin-bottom: 15px;}
+    .metric-value { font-size: 2.2rem; font-weight: bold; color: #2ea043; }
+    .metric-label { font-size: 0.9rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    div[data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("GrowthOS 生き甲斐")
-st.caption("A system for extreme personal accountability.")
-
 today = date.today().isoformat()
 
-def get_habits():
-    db = SessionLocal()
-    habits = db.query(Habit).all()
-    res = [{"id": h.id, "name": h.name, "category": h.category} for h in habits]
-    db.close()
-    return res
+# Fetch Data Functions
+def get_db():
+    return SessionLocal()
 
-def get_habit_logs():
-    db = SessionLocal()
-    logs = db.query(HabitLog).all()
-    res = [{"id": l.id, "habit_id": l.habit_id, "date": l.date, "completed": l.completed, "duration": l.duration} for l in logs]
-    db.close()
-    return res
-
-def get_hansei():
-    db = SessionLocal()
-    reflections = db.query(HanseiReflection).all()
-    res = [{"id": r.id, "date": r.date, "finished": r.finished, "distracted": r.distracted, "mistake": r.mistake, "change_tomorrow": r.change_tomorrow} for r in reflections]
-    db.close()
-    return res
-
-def save_log(habit_id, completed, duration):
-    db = SessionLocal()
-    log = db.query(HabitLog).filter(HabitLog.habit_id == habit_id, HabitLog.date == today).first()
-    if log:
-        log.completed = completed
-        log.duration = duration
-    else:
-        log = HabitLog(habit_id=habit_id, date=today, completed=completed, duration=duration)
-        db.add(log)
+db = get_db()
+habits = db.query(Habit).all()
+logs_today = db.query(HabitLog).filter(HabitLog.date == today).all()
+energy_today = db.query(EnergyLog).filter(EnergyLog.date == today).first()
+if not energy_today:
+    energy_today = EnergyLog(date=today)
+    db.add(energy_today)
     db.commit()
-    db.close()
-
-habits = get_habits()
-logs = get_habit_logs()
-hansei = get_hansei()
-
-tab1, tab2, tab3, tab4 = st.tabs(["📌 Daily Kaizen", "📅 Monthly View", "🗺️ Yearly Heatmap", "🤖 AI Coach"])
-
-# ---------------------------------------------------------
-# L1: DAILY KAIZEN
-# ---------------------------------------------------------
-with tab1:
-    st.markdown("### Today's Action Plan")
-    categories = ['Career', 'MBA', 'Discipline', 'Bad Habits']
-    today_logs_dict = {l['habit_id']: l for l in logs if l['date'] == today}
     
-    # Calculate daily progress
-    total_good_habits = len([h for h in habits if h['category'] != 'Bad Habits'])
-    completed_good = len([l for l in today_logs_dict.values() if l['completed'] and next((h for h in habits if h['id'] == l['habit_id']), {}).get('category') != 'Bad Habits'])
-    progress = completed_good / total_good_habits if total_good_habits > 0 else 0
-    
-    st.progress(progress, text=f"Daily Completion: {int(progress * 100)}%")
-    st.write("---")
-    
-    col1, col2 = st.columns(2)
-    for i, category in enumerate(categories):
-        with (col1 if i % 2 == 0 else col2):
-            st.markdown(f"#### {category}")
-            cat_habits = [h for h in habits if h['category'] == category]
-            for h in cat_habits:
-                h_log = today_logs_dict.get(h['id'], {'completed': False, 'duration': 0})
-                
-                cols = st.columns([3, 1])
-                with cols[0]:
-                    completed = st.checkbox(h['name'], value=h_log['completed'], key=f"chk_{h['id']}")
-                with cols[1]:
-                    if category in ['Career', 'MBA']:
-                        duration = st.number_input("mins", value=h_log['duration'], step=10, key=f"dur_{h['id']}")
-                    else:
-                        duration = 0
-                        
-                if completed != h_log['completed'] or duration != h_log['duration']:
-                    save_log(h['id'], completed, duration)
-                    st.rerun()
+# Initialize today's logs if they don't exist
+log_dict = {l.habit_id: l for l in logs_today}
+for h in habits:
+    if h.id not in log_dict:
+        new_log = HabitLog(habit_id=h.id, date=today, planned_duration=h.default_planned_time)
+        db.add(new_log)
+        log_dict[h.id] = new_log
+db.commit()
+
+# Sidebar Navigation
+st.sidebar.title("GrowthOS")
+st.sidebar.caption("AI Engineer Operating System")
+nav = st.sidebar.radio("Navigation", ["📝 Daily Log", "📊 Analytics Dashboard", "🔄 Weekly Review", "🗺️ Roadmap Tracker"])
 
 # ---------------------------------------------------------
-# L2: MONTHLY VIEW
+# PAGE 1: DAILY LOG
 # ---------------------------------------------------------
-with tab2:
-    st.markdown("### Monthly Performance Dashboard")
+if nav == "📝 Daily Log":
+    st.title("Today's Execution")
     
-    # Filter logs for current month
-    current_month_prefix = today[:7]
-    monthly_logs = [l for l in logs if l['date'].startswith(current_month_prefix)]
+    col1, col2, col3 = st.columns(3)
     
-    # Calculate stats
-    total_study_mins = sum(l['duration'] for l in monthly_logs)
-    days_logged = len(set(l['date'] for l in monthly_logs))
-    
-    m1, m2, m3 = st.columns(3)
-    m1.markdown(f'<div class="metric-card"><div class="metric-value">{total_study_mins // 60}h {total_study_mins % 60}m</div><div class="metric-label">Deep Work Logged</div></div>', unsafe_allow_html=True)
-    m2.markdown(f'<div class="metric-card"><div class="metric-value">{days_logged}</div><div class="metric-label">Active Days</div></div>', unsafe_allow_html=True)
-    
-    positive_logs = [l for l in monthly_logs if l['completed'] and next((h for h in habits if h['id'] == l['habit_id']), {}).get('category') != 'Bad Habits']
-    m3.markdown(f'<div class="metric-card"><div class="metric-value">{len(positive_logs)}</div><div class="metric-label">Positive Actions</div></div>', unsafe_allow_html=True)
-    
-    st.write("---")
-    
-    # Monthly Trends Chart
-    if monthly_logs:
-        df_month = pd.DataFrame(monthly_logs)
-        # merge with habits to get category
-        habit_lookup = {h['id']: h['category'] for h in habits}
-        df_month['category'] = df_month['habit_id'].map(habit_lookup)
-        
-        # Count completions per day
-        df_trends = df_month[df_month['completed'] == True].groupby('date').size().reset_index(name='completions')
-        
-        fig = px.area(df_trends, x='date', y='completions', title="Daily Task Output (Current Month)", template="plotly_dark", color_discrete_sequence=['#00FFAA'])
-        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig, use_container_width=True)
+    # 1. Energy Tracker
+    with st.expander("⚡ Daily Energy Tracker", expanded=True):
+        ec1, ec2, ec3 = st.columns(3)
+        morning = ec1.selectbox("Morning", ["High", "Medium", "Low"], index=["High", "Medium", "Low"].index(energy_today.morning_energy))
+        afternoon = ec2.selectbox("Afternoon", ["High", "Medium", "Low"], index=["High", "Medium", "Low"].index(energy_today.afternoon_energy))
+        night = ec3.selectbox("Night", ["High", "Medium", "Low"], index=["High", "Medium", "Low"].index(energy_today.night_energy))
+        if morning != energy_today.morning_energy or afternoon != energy_today.afternoon_energy or night != energy_today.night_energy:
+            energy_today.morning_energy = morning
+            energy_today.afternoon_energy = afternoon
+            energy_today.night_energy = night
+            db.commit()
 
-# ---------------------------------------------------------
-# L3: YEARLY HEATMAP
-# ---------------------------------------------------------
-with tab3:
-    st.markdown("### 12-Month Consistency Heatmap")
+    # 2. Daily Grid
+    st.markdown("### Core Tasks")
     
-    if logs:
-        # Prepare data for 365 days
-        end_date = date.today()
-        start_date = end_date - timedelta(days=364)
+    for h in habits:
+        l = log_dict[h.id]
         
-        # Create full date range
-        all_dates = [start_date + timedelta(days=x) for x in range(365)]
-        date_strs = [d.isoformat() for d in all_dates]
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 1, 1, 1, 1, 2])
         
-        # Calculate daily scores
-        score_map = {}
-        df_logs = pd.DataFrame(logs)
-        if not df_logs.empty:
-            habit_lookup = {h['id']: h['category'] for h in habits}
-            df_logs['category'] = df_logs['habit_id'].map(habit_lookup)
-            # good habits completed
-            good_logs = df_logs[(df_logs['completed'] == True) & (df_logs['category'] != 'Bad Habits')]
-            daily_scores = good_logs.groupby('date').size().to_dict()
-            for d in date_strs:
-                score_map[d] = daily_scores.get(d, 0)
+        completed = c1.checkbox(f"{h.name} ({h.category})", value=l.completed, key=f"chk_{h.id}")
         
-        # Build heatmap matrix (7 rows for days of week, 52 cols for weeks)
-        z = np.zeros((7, 53))
-        text = np.empty((7, 53), dtype=object)
-        
-        # We start filling from the day of week of start_date
-        start_dow = start_date.weekday() # 0 = Mon, 6 = Sun
-        
-        for i, d in enumerate(all_dates):
-            week = (i + start_dow) // 7
-            day = (i + start_dow) % 7
-            val = score_map.get(d.isoformat(), 0)
-            z[day, week] = val
-            text[day, week] = f"{d.isoformat()}: {val} tasks"
+        if h.category in ["AI Core", "MBA"]:
+            planned = c2.number_input("Plan (m)", value=l.planned_duration, key=f"plan_{h.id}", label_visibility="collapsed")
+            actual = c3.number_input("Act (m)", value=l.duration, key=f"act_{h.id}", label_visibility="collapsed")
+            tod = c4.selectbox("Time", ["Morning", "Afternoon", "Night"], index=0 if not l.time_of_day else ["Morning", "Afternoon", "Night"].index(l.time_of_day), key=f"tod_{h.id}", label_visibility="collapsed")
+        else:
+            planned = 0
+            actual = 0
+            tod = "Morning"
+            c2.write("-")
+            c3.write("-")
+            c4.write("-")
             
-        fig_heat = go.Figure(data=go.Heatmap(
-            z=z,
-            text=text,
-            hoverinfo="text",
-            colorscale=[[0, '#161B22'], [0.2, '#0e4429'], [0.4, '#006d32'], [0.6, '#26a641'], [1.0, '#39d353']],
-            showscale=False,
-            xgap=3,
-            ygap=3
-        ))
+        friction = c5.selectbox("Reason for Failure", ["-", "Too difficult", "Too boring", "Too large", "Distracted", "No clear next step"], index=0 if not l.friction_reason else ["-", "Too difficult", "Too boring", "Too large", "Distracted", "No clear next step"].index(l.friction_reason), key=f"fric_{h.id}", label_visibility="collapsed")
         
-        fig_heat.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            height=250,
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, tickmode='array', tickvals=[0,2,4,6], ticktext=['Mon','Wed','Fri','Sun'], autorange="reversed")
-        )
-        
-        st.plotly_chart(fig_heat, use_container_width=True)
+        if completed != l.completed or planned != l.planned_duration or actual != l.duration or tod != l.time_of_day or friction != l.friction_reason:
+            l.completed = completed
+            l.planned_duration = planned
+            l.duration = actual
+            l.time_of_day = tod
+            l.friction_reason = friction if not completed and friction != "-" else None
+            db.commit()
+
+# ---------------------------------------------------------
+# PAGE 2: ANALYTICS DASHBOARD
+# ---------------------------------------------------------
+elif nav == "📊 Analytics Dashboard":
+    st.title("Performance Analytics")
+    
+    all_logs = db.query(HabitLog).all()
+    if not all_logs:
+        st.warning("No data available.")
     else:
-        st.info("Log some habits to see your yearly consistency heatmap!")
-
-# ---------------------------------------------------------
-# L4: AI COACH
-# ---------------------------------------------------------
-with tab4:
-    st.markdown("### AI Coach & Reflection")
-    
-    c1, c2 = st.columns([1, 1])
-    
-    with c1:
-        st.markdown("#### Evening Reflection (Hansei)")
-        today_hansei = next((x for x in hansei if x['date'] == today), {"finished": "", "distracted": "", "mistake": "", "change_tomorrow": ""})
+        df = pd.DataFrame([{"date": l.date, "completed": l.completed, "planned": l.planned_duration, "actual": l.duration, "time_of_day": l.time_of_day, "friction": l.friction_reason, "cat": l.habit.category} for l in all_logs])
         
-        with st.form("hansei_form"):
-            f1 = st.text_area("1. What did I finish today?", value=today_hansei['finished'])
-            f2 = st.text_area("2. What distracted me today?", value=today_hansei['distracted'])
-            f3 = st.text_area("3. What mistake did I repeat?", value=today_hansei['distracted']) # using mistake logic
-            f4 = st.text_area("4. What will I change tomorrow?", value=today_hansei['change_tomorrow'])
-            
-            if st.form_submit_button("Save Reflection"):
-                db = SessionLocal()
-                r = db.query(HanseiReflection).filter(HanseiReflection.date == today).first()
-                if r:
-                    r.finished = f1
-                    r.distracted = f2
-                    r.mistake = f3
-                    r.change_tomorrow = f4
-                else:
-                    r = HanseiReflection(date=today, finished=f1, distracted=f2, mistake=f3, change_tomorrow=f4)
-                    db.add(r)
-                db.commit()
-                db.close()
-                st.success("Saved!")
-                st.rerun()
+        # Calculate Focus Score (Actual / Planned * 100)
+        core_tasks = df[df['cat'].isin(['AI Core', 'MBA'])]
+        planned_total = core_tasks['planned'].sum()
+        actual_total = core_tasks['actual'].sum()
+        focus_score = (actual_total / planned_total * 100) if planned_total > 0 else 0
+        
+        # Calculate Completion Ratio
+        completion_ratio = (df['completed'].sum() / len(df)) * 100 if len(df) > 0 else 0
+        
+        c1, c2 = st.columns(2)
+        c1.markdown(f'<div class="metric-card"><div class="metric-value">{int(focus_score)}%</div><div class="metric-label">Focus Score</div></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="metric-card"><div class="metric-value">{int(completion_ratio)}%</div><div class="metric-label">Task Completion Ratio</div></div>', unsafe_allow_html=True)
+        
+        st.markdown("### Deep Work Heatmap")
+        st.caption("When are you most productive? (Total Actual Mins)")
+        # Heatmap based on time_of_day
+        hm_data = core_tasks.groupby('time_of_day')['actual'].sum().reset_index()
+        # Sort Morning, Afternoon, Night
+        hm_data['time_of_day'] = pd.Categorical(hm_data['time_of_day'], categories=["Morning", "Afternoon", "Night"], ordered=True)
+        hm_data = hm_data.sort_values('time_of_day')
+        
+        if not hm_data.empty:
+            fig = px.bar(hm_data, x="time_of_day", y="actual", color="time_of_day", color_discrete_sequence=['#2ea043', '#1f6feb', '#d29922'])
+            fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
 
-    with c2:
-        st.markdown("#### AI Insights")
-        if st.button("Generate Strategic Insights"):
-            with st.spinner("Analyzing your logs and reflections..."):
-                try:
-                    api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
-                    
-                    if not api_key or api_key == "your_openai_api_key_here":
-                        st.warning("No OPENAI_API_KEY found in Streamlit Secrets. Showing mock insights.")
-                        st.markdown("> **Pattern:** You are most productive when you sleep 8 hours.\n\n> **Risk:** High chance of burnout this week due to consecutive overworking.\n\n> **Action:** Disconnect at 9 PM tonight.")
-                    else:
-                        client = OpenAI(api_key=api_key)
-                        data_summary = f"Total logs: {len(logs)}, Total reflections: {len(hansei)}\n"
-                        for r in hansei[-3:]:
-                            data_summary += f"Date: {r['date']}\nFinished: {r['finished']}\nDistracted: {r['distracted']}\nMistake: {r['mistake']}\nChange: {r['change_tomorrow']}\n"
-                        
-                        response = client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[
-                                {"role": "system", "content": "You are an elite productivity AI. Analyze this habit data and return actionable, hard-hitting advice."},
-                                {"role": "user", "content": f"Analyze this recent habit data:\n{data_summary}"}
-                            ]
-                        )
-                        st.info(response.choices[0].message.content)
-                except Exception as e:
-                    st.error(f"Error connecting to AI: {e}")
+# ---------------------------------------------------------
+# PAGE 3: WEEKLY REVIEW
+# ---------------------------------------------------------
+elif nav == "🔄 Weekly Review":
+    st.title("Weekly Review & Mistake Analysis")
+    
+    last_7_days = [(date.today() - timedelta(days=i)).isoformat() for i in range(7)]
+    weekly_logs = db.query(HabitLog).filter(HabitLog.date.in_(last_7_days)).all()
+    
+    df_w = pd.DataFrame([{"planned": l.planned_duration, "actual": l.duration, "friction": l.friction_reason, "cat": l.habit.category} for l in weekly_logs if l.habit.category in ['AI Core', 'MBA']])
+    
+    if not df_w.empty:
+        planned_hrs = df_w['planned'].sum() / 60
+        actual_hrs = df_w['actual'].sum() / 60
+        lost_hrs = planned_hrs - actual_hrs
+        if lost_hrs < 0: lost_hrs = 0
+        
+        st.markdown("### Time Leakage (Sankey Diagram)")
+        st.caption("Where did your planned deep work time go?")
+        
+        # Build Sankey: Planned (0) -> Actual (1), Lost (2)
+        # Lost (2) -> Too difficult (3), Distracted (4), etc.
+        
+        friction_counts = df_w[df_w['friction'].notnull()]['friction'].value_counts()
+        
+        # Nodes
+        node_labels = ["Planned Time", "Actual Output", "Lost Time"] + list(friction_counts.index)
+        
+        source = [0, 0]
+        target = [1, 2]
+        value = [actual_hrs, lost_hrs]
+        
+        for i, (reason, count) in enumerate(friction_counts.items()):
+            source.append(2)
+            target.append(3 + i)
+            # Estimate hours lost per friction reason (proportional)
+            value.append(lost_hrs * (count / friction_counts.sum()) if friction_counts.sum() > 0 else 0)
+            
+        fig_sankey = go.Figure(data=[go.Sankey(
+            node = dict(
+              pad = 15,
+              thickness = 20,
+              line = dict(color = "black", width = 0.5),
+              label = node_labels,
+              color = ["#8b949e", "#2ea043", "#f85149"] + ["#d29922"] * len(friction_counts)
+            ),
+            link = dict(
+              source = source,
+              target = target,
+              value = value
+          ))])
+        st.plotly_chart(fig_sankey, use_container_width=True)
+        
+        st.markdown("### Friction Analysis")
+        st.caption("Why are tasks failing?")
+        if not friction_counts.empty:
+            fig_fric = px.bar(x=friction_counts.index, y=friction_counts.values, labels={'x':'Reason', 'y':'Failed Tasks'}, color_discrete_sequence=['#f85149'])
+            fig_fric.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_fric, use_container_width=True)
+        else:
+            st.success("No friction reasons logged this week. Excellent discipline!")
+    else:
+        st.info("No deep work data logged for the past 7 days.")
+
+# ---------------------------------------------------------
+# PAGE 4: ROADMAP TRACKER
+# ---------------------------------------------------------
+elif nav == "🗺️ Roadmap Tracker":
+    st.title("AI Engineer & MBA Roadmap")
+    
+    roadmaps = db.query(RoadmapItem).all()
+    categories = list(set([r.category for r in roadmaps]))
+    
+    for cat in categories:
+        st.markdown(f"### {cat}")
+        items = [r for r in roadmaps if r.category == cat]
+        for i in items:
+            st.markdown(f"**{i.topic}**")
+            st.progress(i.progress / 100, text=f"{i.progress}% Complete")
+
+db.close()
