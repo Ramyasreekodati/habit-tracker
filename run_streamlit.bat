@@ -1,3 +1,0 @@
-@echo off
-echo Starting GrowthOS Streamlit MVP...
-start cmd /k "streamlit run app.py"
