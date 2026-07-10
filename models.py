@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, CheckConstraint, UniqueConstraint, Index, Table
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, CheckConstraint, UniqueConstraint, Index, Table, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
@@ -22,6 +22,7 @@ class Habit(Base):
     __tablename__ = "habits"
     __table_args__ = (
         CheckConstraint('monthly_goal > 0', name='check_goal_positive'),
+        CheckConstraint('difficulty IN (1, 2, 3)', name='check_difficulty_range'),
     )
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
@@ -30,6 +31,7 @@ class Habit(Base):
     reward = Column(String)
     frequency_type = Column(String, default="daily")
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     display_order = Column(Integer, default=0)
     
@@ -50,41 +52,57 @@ class HabitLog(Base):
     )
     id = Column(Integer, primary_key=True, index=True)
     habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"))
-    log_date = Column(Date, index=True) # Changed from String to Date
+    log_date = Column(Date, index=True)
     status = Column(String, default="")
     note = Column(String)
-    missed_reason = Column(String, default="") # e.g. Sick, Travel, Busy, Forgot, Low Motivation, Other
+    missed_reason = Column(String, default="") 
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     habit = relationship("Habit", back_populates="logs")
 
 
 class AnnualGoal(Base):
     __tablename__ = "annual_goals"
+    __table_args__ = (
+        UniqueConstraint('target_year', 'title', name='uq_annual_goal_year_title'),
+        CheckConstraint('progress >= 0 AND progress <= 100', name='check_progress_range'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     target_year = Column(Integer, index=True)
     title = Column(String)
     description = Column(String, default="")
     progress = Column(Integer, default=0) # 0-100%
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class MonthlyGoal(Base):
     __tablename__ = "monthly_goals"
     __table_args__ = (
+        UniqueConstraint('year_month', 'goal_text', name='uq_monthly_goal_text'),
         Index('idx_year_month', 'year_month'),
     )
     id = Column(Integer, primary_key=True, index=True)
     year_month = Column(String, index=True) # YYYY-MM
     goal_text = Column(String)
     completed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class WeeklyPlan(Base):
     __tablename__ = "weekly_plans"
+    __table_args__ = (
+        UniqueConstraint('year_month', 'week_number', 'task_text', name='uq_weekly_plan_task'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     year_month = Column(String, index=True)
     week_number = Column(Integer) # 1-5
     task_text = Column(String)
     completed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class MonthlyReflection(Base):
@@ -94,18 +112,28 @@ class MonthlyReflection(Base):
     wins = Column(String, default="")
     improvements = Column(String, default="")
     notes = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class DailyJournal(Base):
     __tablename__ = "daily_journals"
+    __table_args__ = (
+        CheckConstraint('energy BETWEEN 1 AND 10', name='check_energy_range'),
+        CheckConstraint('focus_score BETWEEN 1 AND 10', name='check_focus_range'),
+        CheckConstraint('stress_score BETWEEN 1 AND 10', name='check_stress_range'),
+        CheckConstraint('sleep_hours >= 0 AND sleep_hours <= 24', name='check_sleep_range'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, index=True, unique=True)
     mood = Column(String, default="") # Emoji or text
     energy = Column(Integer, default=0) # 1-10
-    sleep_hours = Column(Integer, default=0) 
+    sleep_hours = Column(Float, default=0.0) 
     focus_score = Column(Integer, default=0) # 1-10
     stress_score = Column(Integer, default=0) # 1-10
     notes = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class WeeklyReview(Base):
@@ -116,3 +144,5 @@ class WeeklyReview(Base):
     failures = Column(String, default="")
     distractions = Column(String, default="")
     next_week_priority = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

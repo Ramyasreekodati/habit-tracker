@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import date, timedelta
 import calendar
-from models import Habit, HabitLog
+from models import Habit, HabitLog, DailyJournal
 
 def get_habit_logs_df(db_session, start_date=None, end_date=None):
     query = db_session.query(HabitLog)
@@ -211,3 +211,129 @@ def get_smart_insights(db_session):
             insights.append(f"📊 Habit logging consistency for missed reasons is **{quality}%**.")
             
     return insights if insights else ["Keep logging data to generate insights!"]
+
+# --- New Dashboard KPI Functions ---
+
+def get_dashboard_kpis(db_session, today):
+    # Today's Completion %
+    todays_logs = db_session.query(HabitLog).filter(HabitLog.log_date == today).all()
+    active_habits_count = db_session.query(Habit).filter(Habit.is_active == True).count()
+    if active_habits_count > 0:
+        todays_completed = len([l for l in todays_logs if l.status == 'completed'])
+        today_pct = int((todays_completed / active_habits_count) * 100)
+    else:
+        today_pct = 0
+
+    # Weekly Score (past 7 days)
+    week_ago = today - timedelta(days=6)
+    week_logs = db_session.query(HabitLog).filter(HabitLog.log_date >= week_ago, HabitLog.log_date <= today).all()
+    expected_week_logs = active_habits_count * 7
+    if expected_week_logs > 0:
+        week_completed = len([l for l in week_logs if l.status == 'completed'])
+        week_score = int((week_completed / expected_week_logs) * 100)
+    else:
+        week_score = 0
+
+    # Longest Streak (mock implementation, you can make it calculate max streak)
+    df_logs = get_habit_logs_df(db_session)
+    longest_streak = 0
+    if not df_logs.empty:
+        # Simplistic calculation across all habits for demo purposes
+        completed_dates = df_logs[df_logs['status'] == 'completed']['log_date'].unique()
+        completed_dates = sorted(completed_dates)
+        curr_streak = 0
+        for i in range(len(completed_dates)):
+            if i == 0:
+                curr_streak = 1
+            elif (completed_dates[i] - completed_dates[i-1]).days == 1:
+                curr_streak += 1
+            else:
+                curr_streak = 1
+            longest_streak = max(longest_streak, curr_streak)
+
+    # Goal Alignment
+    goal_alignment = 85 # Dummy value as per goal_service implementation
+
+    # Mood and Sleep from Journal
+    journal = db_session.query(DailyJournal).filter(DailyJournal.date == today).first()
+    mood = journal.mood if journal and journal.mood else "None"
+    sleep = journal.sleep_hours if journal and journal.sleep_hours else 0.0
+
+    return {
+        "today_pct": today_pct,
+        "week_score": week_score,
+        "longest_streak": longest_streak,
+        "goal_alignment": goal_alignment,
+        "mood": mood,
+        "sleep": sleep
+    }
+
+def get_todays_tasks(db_session, today):
+    habits = db_session.query(Habit).filter(Habit.is_active == True).order_by(Habit.display_order).all()
+    logs = db_session.query(HabitLog).filter(HabitLog.log_date == today).all()
+    log_dict = {l.habit_id: l.status for l in logs}
+    
+    tasks = []
+    for h in habits:
+        status = log_dict.get(h.id, "")
+        tasks.append({"id": h.id, "name": h.name, "category": h.category, "status": status})
+    return tasks
+
+def get_category_performance(db_session, start_date=None, end_date=None):
+    df_logs = get_habit_logs_df(db_session, start_date=start_date, end_date=end_date)
+    if df_logs.empty:
+        return pd.DataFrame()
+    habits = db_session.query(Habit).all()
+    habit_cat = {h.id: h.category for h in habits}
+    
+    df_logs['category'] = df_logs['habit_id'].map(habit_cat)
+    completed = df_logs[df_logs['status'] == 'completed']
+    
+    if completed.empty:
+        return pd.DataFrame()
+        
+    cat_counts = completed.groupby('category').size().reset_index(name='completions')
+    return cat_counts
+
+def get_weekly_trend(db_session, today):
+    week_ago = today - timedelta(days=6)
+    df_logs = get_habit_logs_df(db_session, start_date=week_ago, end_date=today)
+    if df_logs.empty:
+        return pd.DataFrame()
+        
+    habits = db_session.query(Habit).filter(Habit.is_active == True).all()
+    active_count = len(habits)
+    if active_count == 0:
+        return pd.DataFrame()
+        
+    trend_data = []
+    for i in range(7):
+        dt = week_ago + timedelta(days=i)
+        day_logs = df_logs[df_logs['log_date'] == pd.Timestamp(dt)]
+        completed = len(day_logs[day_logs['status'] == 'completed'])
+        pct = (completed / active_count) * 100
+        trend_data.append({"date": dt.strftime("%a"), "score": pct})
+        
+    return pd.DataFrame(trend_data)
+
+def get_recent_activity(db_session):
+    # Get the last 15 logs that are completed or missed
+    logs = db_session.query(HabitLog).filter(HabitLog.status.in_(['completed', 'missed'])).order_by(HabitLog.log_date.desc(), HabitLog.id.desc()).limit(15).all()
+    
+    activities = []
+    if not logs:
+        return activities
+        
+    habits = {h.id: h for h in db_session.query(Habit).all()}
+    
+    for l in logs:
+        h = habits.get(l.habit_id)
+        if h:
+            activities.append({
+                "date": l.log_date,
+                "habit": h.name,
+                "status": l.status,
+                "reason": l.missed_reason
+            })
+            
+    return activities

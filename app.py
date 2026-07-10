@@ -21,6 +21,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+with st.sidebar:
+    st.markdown("<div style='margin-top: 50px;'></div>", unsafe_allow_html=True)
+    st.write("---")
+    st.caption("GrowthOS v2.1 | Database v2")
+    with st.expander("🛠️ Admin & Backups"):
+        if os.path.exists("growthos.db"):
+            with open("growthos.db", "rb") as f:
+                db_data = f.read()
+            st.download_button("Export Database", data=db_data, file_name="growthos_backup.db", mime="application/octet-stream")
+        
+        uploaded_db = st.file_uploader("Restore Database", type=["db", "sqlite"])
+        if uploaded_db:
+            if st.button("Confirm Restore", type="primary"):
+                with open("growthos.db", "wb") as f:
+                    f.write(uploaded_db.getbuffer())
+                st.success("Database restored! Please reload the page.")
+
 pages = {
     "Overview": [
         st.Page("views/1_Dashboard.py", title="Dashboard", icon=":material/dashboard:"),

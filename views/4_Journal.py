@@ -2,9 +2,9 @@ import streamlit as st
 from datetime import date
 from database import get_db_session
 from services.journal_service import (
-    get_daily_journal, save_daily_journal,
-    get_weekly_review, save_weekly_review,
-    get_monthly_reflection, save_monthly_reflection
+    get_daily_journal, save_daily_journal, delete_daily_journal,
+    get_weekly_review, save_weekly_review, delete_weekly_review,
+    get_monthly_reflection, save_monthly_reflection, delete_monthly_reflection
 )
 
 
@@ -35,6 +35,11 @@ with tab1:
         if st.form_submit_button("Save Daily Entry"):
             save_daily_journal(db, today, mood, energy, int(sleep), focus, stress, notes)
             st.success("Daily journal saved!")
+            
+    if journal.id:
+        if st.button("Delete Daily Entry", type="primary"):
+            delete_daily_journal(db, today)
+            st.rerun()
 
 # 2. Weekly Review
 with tab2:
@@ -51,6 +56,11 @@ with tab2:
         if st.form_submit_button("Save Weekly Review"):
             save_weekly_review(db, today, wins, failures, distractions, priority)
             st.success("Weekly review saved!")
+            
+    if review.id:
+        if st.button("Delete Weekly Review", type="primary"):
+            delete_weekly_review(db, today)
+            st.rerun()
 
 # 3. Monthly Reflection
 with tab3:
@@ -65,5 +75,10 @@ with tab3:
         if st.form_submit_button("Save Monthly Reflection"):
             save_monthly_reflection(db, today.year, today.month, m_wins, m_improvements, m_notes)
             st.success("Monthly reflection saved!")
+            
+    if reflection.id:
+        if st.button("Delete Monthly Reflection", type="primary"):
+            delete_monthly_reflection(db, today.year, today.month)
+            st.rerun()
 
 db.close()

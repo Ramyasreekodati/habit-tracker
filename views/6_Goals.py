@@ -2,13 +2,11 @@ import streamlit as st
 from datetime import date
 from database import get_db_session
 from services.goal_service import (
-    get_annual_goals, add_annual_goal, update_annual_goal_progress,
-    get_monthly_goals, add_monthly_goal,
-    get_weekly_plans, add_weekly_plan,
+    get_annual_goals, add_annual_goal, update_annual_goal_progress, edit_annual_goal, delete_annual_goal,
+    get_monthly_goals, add_monthly_goal, update_monthly_goal_status, delete_monthly_goal,
+    get_weekly_plans, add_weekly_plan, update_weekly_plan_status, delete_weekly_plan,
     calculate_goal_alignment
 )
-
-
 
 st.title("Goal Management")
 st.caption("Annual Goal -> Monthly Goal -> Weekly Plan")
@@ -29,6 +27,8 @@ col_a, col_b, col_c = st.columns(3)
 with col_a:
     st.subheader(f"Annual Goals ({current_year})")
     annuals = get_annual_goals(db, current_year)
+    if not annuals:
+        st.info("No annual goals yet.")
     for a in annuals:
         with st.container(border=True):
             st.markdown(f"**{a.title}**")
@@ -36,6 +36,17 @@ with col_a:
             new_prog = st.slider("Progress", 0, 100, a.progress, key=f"ag_{a.id}")
             if new_prog != a.progress:
                 update_annual_goal_progress(db, a.id, new_prog)
+            
+            with st.expander("Edit / Delete"):
+                with st.form(f"edit_ag_{a.id}"):
+                    e_title = st.text_input("Title", value=a.title)
+                    e_desc = st.text_input("Description", value=a.description)
+                    if st.form_submit_button("Update"):
+                        edit_annual_goal(db, a.id, e_title, e_desc)
+                        st.rerun()
+                if st.button("Delete Goal", key=f"del_ag_{a.id}", type="primary"):
+                    delete_annual_goal(db, a.id)
+                    st.rerun()
                 
     with st.form("add_annual"):
         a_title = st.text_input("New Annual Goal")
@@ -48,8 +59,19 @@ with col_a:
 with col_b:
     st.subheader(f"Monthly Goals ({today.strftime('%b')})")
     monthlies = get_monthly_goals(db, curr_ym)
+    if not monthlies:
+        st.info("No monthly goals yet.")
     for m in monthlies:
-        st.checkbox(m.goal_text, value=m.completed, key=f"mg_{m.id}")
+        mc1, mc2 = st.columns([5, 1])
+        with mc1:
+            checked = st.checkbox(m.goal_text, value=m.completed, key=f"mg_{m.id}")
+            if checked != m.completed:
+                update_monthly_goal_status(db, m.id, checked)
+                st.rerun()
+        with mc2:
+            if st.button("🗑️", key=f"del_mg_{m.id}", help="Delete Monthly Goal"):
+                delete_monthly_goal(db, m.id)
+                st.rerun()
         
     with st.form("add_monthly"):
         m_txt = st.text_input("New Monthly Goal")
@@ -61,8 +83,19 @@ with col_b:
 with col_c:
     st.subheader("Weekly Plans")
     weeklies = get_weekly_plans(db, curr_ym)
+    if not weeklies:
+        st.info("No weekly plans yet.")
     for w in weeklies:
-        st.checkbox(f"W{w.week_number}: {w.task_text}", value=w.completed, key=f"wp_{w.id}")
+        wc1, wc2 = st.columns([5, 1])
+        with wc1:
+            checked = st.checkbox(f"W{w.week_number}: {w.task_text}", value=w.completed, key=f"wp_{w.id}")
+            if checked != w.completed:
+                update_weekly_plan_status(db, w.id, checked)
+                st.rerun()
+        with wc2:
+            if st.button("🗑️", key=f"del_wp_{w.id}", help="Delete Weekly Plan"):
+                delete_weekly_plan(db, w.id)
+                st.rerun()
         
     with st.form("add_weekly"):
         w_num = st.number_input("Week", min_value=1, max_value=5, value=1)

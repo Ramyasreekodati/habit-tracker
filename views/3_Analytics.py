@@ -61,4 +61,22 @@ if not df_forecast.empty:
 else:
     st.info("No forecasting data available for this month.")
 
+# 5. Weekly Category Breakdown (Pie Chart)
+st.markdown("### This Week's Focus")
+st.caption(f"Category breakdown for the past 7 days.")
+from services.analytics_service import get_category_performance
+from datetime import timedelta
+week_ago = date.today() - timedelta(days=6)
+cat_df = get_category_performance(db, start_date=week_ago, end_date=date.today())
+
+if not cat_df.empty:
+    pie_chart = alt.Chart(cat_df).mark_arc(innerRadius=40).encode(
+        theta=alt.Theta(field="completions", type="quantitative"),
+        color=alt.Color(field="category", type="nominal", legend=alt.Legend(title="Category")),
+        tooltip=['category', 'completions']
+    ).properties(height=300)
+    st.altair_chart(pie_chart, use_container_width=True)
+else:
+    st.info("No completions recorded in the past 7 days.")
+
 db.close()
