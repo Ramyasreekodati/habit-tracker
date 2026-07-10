@@ -8,7 +8,7 @@ from services.goal_service import (
     calculate_goal_alignment
 )
 
-st.set_page_config(page_title="Goals | GrowthOS", page_icon="🎯", layout="wide")
+
 
 st.title("Goal Management")
 st.caption("Annual Goal -> Monthly Goal -> Weekly Plan")

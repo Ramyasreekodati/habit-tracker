@@ -23,16 +23,16 @@ st.markdown("""
 
 pages = {
     "Overview": [
-        st.Page("pages/1_Dashboard.py", title="Dashboard", icon=":material/dashboard:"),
-        st.Page("pages/2_Tracker.py", title="Tracker", icon=":material/check_box:"),
+        st.Page("views/1_Dashboard.py", title="Dashboard", icon=":material/dashboard:"),
+        st.Page("views/2_Tracker.py", title="Tracker", icon=":material/check_box:"),
     ],
     "Insights": [
-        st.Page("pages/3_Analytics.py", title="Analytics", icon=":material/analytics:"),
-        st.Page("pages/5_Reports.py", title="Reports", icon=":material/summarize:"),
+        st.Page("views/3_Analytics.py", title="Analytics", icon=":material/analytics:"),
+        st.Page("views/5_Reports.py", title="Reports", icon=":material/summarize:"),
     ],
     "Life": [
-        st.Page("pages/4_Journal.py", title="Journal", icon=":material/book:"),
-        st.Page("pages/6_Goals.py", title="Goals", icon=":material/flag:"),
+        st.Page("views/4_Journal.py", title="Journal", icon=":material/book:"),
+        st.Page("views/6_Goals.py", title="Goals", icon=":material/flag:"),
     ]
 }
 

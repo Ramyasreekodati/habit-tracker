@@ -4,7 +4,7 @@ import calendar
 from database import get_db_session
 from services.report_service import generate_monthly_report, generate_csv_report
 
-st.set_page_config(page_title="Reports | GrowthOS", page_icon="📑", layout="wide")
+
 
 st.title("Monthly Reports")
 

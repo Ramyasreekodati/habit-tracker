@@ -5,7 +5,7 @@ import calendar
 from database import get_db_session
 from models import Habit, HabitLog
 
-st.set_page_config(page_title="Tracker | GrowthOS", page_icon="✅", layout="wide")
+
 
 st.title("Habit Tracker")
 

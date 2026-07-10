@@ -3,7 +3,7 @@ from database import get_db_session
 from services.analytics_service import get_smart_insights, calculate_recovery_metrics, get_habit_logs_df
 from models import Habit
 
-st.set_page_config(page_title="Dashboard | GrowthOS", page_icon="📈", layout="wide")
+
 
 st.title("Today's Focus")
 

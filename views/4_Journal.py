@@ -7,7 +7,7 @@ from services.journal_service import (
     get_monthly_reflection, save_monthly_reflection
 )
 
-st.set_page_config(page_title="Journal | GrowthOS", page_icon="📓", layout="wide")
+
 st.title("Life Journal & Reviews")
 
 db = get_db_session()

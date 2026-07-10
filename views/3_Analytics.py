@@ -10,7 +10,7 @@ from services.analytics_service import (
     calculate_recovery_metrics
 )
 
-st.set_page_config(page_title="Analytics | GrowthOS", page_icon="📊", layout="wide")
+
 
 st.title("Analytics")
 
