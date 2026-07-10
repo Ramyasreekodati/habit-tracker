@@ -137,6 +137,7 @@ habits = db.query(Habit).filter(Habit.is_active == True).order_by(Habit.display_
 
 if not habits:
     st.warning("No active habits found. Open 'Manage Habits' to create your first habit!")
+    db.close()
     st.stop()
 
 # Load logs
