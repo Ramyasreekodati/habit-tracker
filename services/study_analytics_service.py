@@ -88,3 +88,40 @@ def check_burnout_warning(db: Session, today: date):
         "low_sleep": low_sleep,
         "negative_streak": negative_streak
     }
+
+def get_most_productive_weekday(db: Session):
+    sessions = db.query(
+        func.strftime('%w', StudySession.completion_date).label('weekday'),
+        func.sum(StudySession.duration_minutes).label('total')
+    ).filter(StudySession.status == 'completed').group_by('weekday').all()
+    
+    if not sessions:
+        return "N/A"
+    best = max(sessions, key=lambda x: x.total)
+    days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    if best.weekday is not None:
+        return days[int(best.weekday)]
+    return "N/A"
+
+def get_best_study_hour(db: Session):
+    sessions = db.query(
+        func.strftime('%H', StudySession.actual_start).label('hour'),
+        func.sum(StudySession.duration_minutes).label('total')
+    ).filter(StudySession.status == 'completed', StudySession.actual_start != None).group_by('hour').all()
+    
+    if not sessions:
+        return "N/A"
+    best = max(sessions, key=lambda x: x.total)
+    if best.hour is not None:
+        return f"{best.hour}:00"
+    return "N/A"
+
+def get_most_neglected_subject(db: Session):
+    # Subject with least hours completed but highest priority / estimated hours
+    subjects = get_subject_progress(db)
+    if subjects.empty:
+        return "N/A"
+    
+    # Sort by lowest progress
+    subjects = subjects.sort_values(by="Progress %", ascending=True)
+    return subjects.iloc[0]["Subject"]

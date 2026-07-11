@@ -3,6 +3,13 @@ from datetime import date
 import calendar
 from database import get_db_session
 from services.report_service import generate_monthly_report, generate_csv_report
+from services.study_analytics_service import (
+    get_most_productive_weekday,
+    get_best_study_hour,
+    get_most_neglected_subject,
+    get_revision_completion_rate
+)
+from datetime import timedelta
 
 
 
@@ -29,6 +36,18 @@ with col2:
         r2.metric("Success Rate", f"{report.get('Success Rate', 0)}%")
         r3.metric("Total Completions", report.get('Total Completions', 0))
         r4.metric("Habits Tracked", report.get('Total Habits Tracked', 0))
+        
+        st.write("---")
+        
+        st.markdown("### Learning Insights (All Time)")
+        l1, l2, l3, l4 = st.columns(4)
+        l1.metric("Most Productive Day", get_most_productive_weekday(db))
+        l2.metric("Best Study Hour", get_best_study_hour(db))
+        l3.metric("Most Neglected", get_most_neglected_subject(db))
+        
+        # We calculate revision rate across a larger window, e.g. last 6 months
+        rev_rate = get_revision_completion_rate(db, date.today() - timedelta(days=180), date.today())
+        l4.metric("Revision Compliance", f"{rev_rate}%")
         
         st.write("---")
         

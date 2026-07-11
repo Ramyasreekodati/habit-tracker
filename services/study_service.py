@@ -84,6 +84,19 @@ def delete_study_session(db: Session, session_id: int):
         db.delete(session)
         db.commit()
 
+def edit_study_session(db: Session, session_id: int, topic: str, duration_minutes: int, 
+                       session_type: str, source_type: str, monthly_goal_id: int = None, weekly_plan_id: int = None):
+    session = db.query(StudySession).filter(StudySession.id == session_id).first()
+    if session:
+        session.topic = topic
+        session.duration_minutes = duration_minutes
+        session.session_type = session_type
+        session.source_type = source_type
+        session.monthly_goal_id = monthly_goal_id
+        session.weekly_plan_id = weekly_plan_id
+        db.commit()
+    return session
+
 # --- Revision Engine Service ---
 
 def generate_revisions(db: Session, learning_session_id: int, completion_date: date):
