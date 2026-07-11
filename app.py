@@ -24,7 +24,7 @@ st.markdown("""
 with st.sidebar:
     st.markdown("<div style='margin-top: 50px;'></div>", unsafe_allow_html=True)
     st.write("---")
-    st.caption("GrowthOS v2.1 | Database v2")
+    st.caption("GrowthOS v3.0 | Database v3")
     with st.expander("🛠️ Admin & Backups"):
         if os.path.exists("growthos.db"):
             with open("growthos.db", "rb") as f:
@@ -40,8 +40,12 @@ with st.sidebar:
 
 pages = {
     "Overview": [
-        st.Page("views/1_Dashboard.py", title="Dashboard", icon=":material/dashboard:"),
+        st.Page("views/1_Dashboard.py", title="Dashboard", icon=":material/dashboard:", default=True),
         st.Page("views/2_Tracker.py", title="Tracker", icon=":material/check_box:"),
+    ],
+    "Learning": [
+        st.Page("views/7_Study_Planner.py", title="Study Planner", icon=":material/school:"),
+        st.Page("views/8_Revision.py", title="Revision Queue", icon=":material/menu_book:"),
     ],
     "Insights": [
         st.Page("views/3_Analytics.py", title="Analytics", icon=":material/analytics:"),

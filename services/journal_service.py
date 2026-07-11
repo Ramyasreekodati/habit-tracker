@@ -7,7 +7,7 @@ def get_daily_journal(db_session, target_date: date):
         journal = DailyJournal(date=target_date)
     return journal
 
-def save_daily_journal(db_session, target_date: date, mood: str, energy: int, sleep: int, focus: int, stress: int, notes: str):
+def save_daily_journal(db_session, target_date: date, mood: str, energy: int, sleep: float, focus: int, stress: int, notes: str, wins: str = "", blockers: str = "", learnings: str = "", distractions: str = ""):
     try:
         journal = db_session.query(DailyJournal).filter(DailyJournal.date == target_date).first()
         if not journal:
@@ -20,6 +20,10 @@ def save_daily_journal(db_session, target_date: date, mood: str, energy: int, sl
         journal.focus_score = focus
         journal.stress_score = stress
         journal.notes = notes
+        journal.wins = wins
+        journal.blockers = blockers
+        journal.learnings = learnings
+        journal.distractions = distractions
         
         db_session.commit()
         return journal

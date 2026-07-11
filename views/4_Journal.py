@@ -30,10 +30,18 @@ with tab1:
             focus = st.slider("Focus Score (1-10)", 1, 10, value=journal.focus_score if journal.focus_score else 5)
             stress = st.slider("Stress Level (1-10)", 1, 10, value=journal.stress_score if journal.stress_score else 3)
         
-        notes = st.text_area("Brain Dump / Notes", value=journal.notes)
+        c_notes1, c_notes2 = st.columns(2)
+        with c_notes1:
+            wins = st.text_area("Wins", value=journal.wins, height=100)
+            learnings = st.text_area("Learnings", value=journal.learnings, height=100)
+        with c_notes2:
+            blockers = st.text_area("Blockers", value=journal.blockers, height=100)
+            distractions = st.text_area("Distractions", value=journal.distractions, height=100)
+            
+        notes = st.text_area("Brain Dump / General Notes", value=journal.notes)
         
         if st.form_submit_button("Save Daily Entry"):
-            save_daily_journal(db, today, mood, energy, int(sleep), focus, stress, notes)
+            save_daily_journal(db, today, mood, energy, sleep, focus, stress, notes, wins, blockers, learnings, distractions)
             st.success("Daily journal saved!")
             
     if journal.id:

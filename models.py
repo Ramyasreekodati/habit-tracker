@@ -38,6 +38,7 @@ class Habit(Base):
     # New fields
     difficulty = Column(Integer, default=1) # 1: Easy, 2: Medium, 3: Hard
     notes = Column(String, default="")
+    archived_reason = Column(String, default="")
     
     tags = relationship("Tag", secondary=habit_tag_association, back_populates="habits")
     logs = relationship("HabitLog", back_populates="habit", cascade="all, delete-orphan")
@@ -46,7 +47,7 @@ class Habit(Base):
 class HabitLog(Base):
     __tablename__ = "habit_logs"
     __table_args__ = (
-        CheckConstraint("status IN ('', 'completed', 'missed', 'skipped')", name='check_valid_status'),
+        CheckConstraint("status IN ('completed', 'missed', 'skipped')", name='check_valid_status'),
         UniqueConstraint('habit_id', 'log_date', name='uq_habit_date'),
         Index('idx_logs_habit_date', 'habit_id', 'log_date')
     )
@@ -132,6 +133,10 @@ class DailyJournal(Base):
     focus_score = Column(Integer, default=0) # 1-10
     stress_score = Column(Integer, default=0) # 1-10
     notes = Column(String, default="")
+    wins = Column(String, default="")
+    blockers = Column(String, default="")
+    learnings = Column(String, default="")
+    distractions = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -146,3 +151,68 @@ class WeeklyReview(Base):
     next_week_priority = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Subject(Base):
+    __tablename__ = "subjects"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    category = Column(String)
+    priority = Column(Integer, default=1) # 1: High, 2: Medium, 3: Low
+    estimated_total_hours = Column(Integer, default=0)
+    is_completed = Column(Boolean, default=False)
+    color = Column(String, default="#4CAF50")
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    sessions = relationship("StudySession", back_populates="subject")
+
+
+class StudySession(Base):
+    __tablename__ = "study_sessions"
+    __table_args__ = (
+        Index('idx_study_planned_date', 'planned_date'),
+        Index('idx_study_subject', 'subject_id'),
+        Index('idx_study_monthly_goal', 'monthly_goal_id'),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    planned_date = Column(Date)
+    completion_date = Column(Date, nullable=True)
+    subject_id = Column(Integer, ForeignKey('subjects.id'))
+    topic = Column(String)
+    duration_minutes = Column(Integer, default=0)
+    status = Column(String, default="planned") # planned, completed, skipped
+    energy_level = Column(Integer, default=5) # 1-10
+    difficulty = Column(Integer, default=5) # 1-10
+    notes = Column(String, default="")
+    
+    planned_start = Column(DateTime, nullable=True)
+    planned_end = Column(DateTime, nullable=True)
+    actual_start = Column(DateTime, nullable=True)
+    actual_end = Column(DateTime, nullable=True)
+    
+    session_type = Column(String, default="Learning") # Learning, Practice, Revision, Project, Mock Interview
+    source_type = Column(String, default="Other") # Udemy, YouTube, Book, Practice, College, Personal Notes, Other
+    
+    monthly_goal_id = Column(Integer, ForeignKey('monthly_goals.id'), nullable=True)
+    weekly_plan_id = Column(Integer, ForeignKey('weekly_plans.id'), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    subject = relationship("Subject", back_populates="sessions")
+    revisions = relationship("RevisionQueue", back_populates="learning_session", cascade="all, delete-orphan")
+
+
+class RevisionQueue(Base):
+    __tablename__ = "revision_queue"
+    __table_args__ = (
+        Index('idx_revision_date', 'revision_date'),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    learning_session_id = Column(Integer, ForeignKey('study_sessions.id', ondelete="CASCADE"))
+    revision_date = Column(Date)
+    revision_stage = Column(Integer) # 1, 2, 3, 4, 5
+    completed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    learning_session = relationship("StudySession", back_populates="revisions")
