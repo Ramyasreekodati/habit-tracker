@@ -11,6 +11,8 @@ def get_subjects(db: Session, active_only: bool = True):
     return query.all()
 
 def add_subject(db: Session, name: str, category: str, priority: int, estimated_total_hours: int, color: str):
+    from sqlalchemy.exc import IntegrityError
+    
     subject = Subject(
         name=name,
         category=category,
@@ -19,9 +21,13 @@ def add_subject(db: Session, name: str, category: str, priority: int, estimated_
         color=color
     )
     db.add(subject)
-    db.commit()
-    db.refresh(subject)
-    return subject
+    try:
+        db.commit()
+        db.refresh(subject)
+        return subject
+    except IntegrityError:
+        db.rollback()
+        return None
 
 def mark_subject_completed(db: Session, subject_id: int, completed: bool = True):
     subject = db.query(Subject).filter(Subject.id == subject_id).first()

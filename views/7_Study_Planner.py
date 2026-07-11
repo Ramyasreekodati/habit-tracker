@@ -49,8 +49,11 @@ with tab_subjects:
         color = st.color_picker("Color", "#4CAF50")
         
         if st.form_submit_button("Add Subject") and name:
-            add_subject(db, name, category, priority, est_hours, color)
-            st.rerun()
+            new_sub = add_subject(db, name, category, priority, est_hours, color)
+            if new_sub:
+                st.rerun()
+            else:
+                st.error("A subject with this name already exists. Please choose a different name.")
 
 # Load goals for linking across both planners
 curr_ym = f"{today.year}-{today.month:02d}"
