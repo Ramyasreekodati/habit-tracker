@@ -60,7 +60,7 @@ curr_ym = f"{today.year}-{today.month:02d}"
 monthlies = {m.id: m.goal_text for m in get_monthly_goals(db, curr_ym)}
 weeklies = {w.id: w.task_text for w in get_weekly_plans(db, curr_ym)}
 
-def render_session_card(sess, db, monthlies, weeklies):
+def render_session_card(sess, db, monthlies, weeklies, prefix=""):
     with st.container(border=True):
         sc1, sc2, sc3 = st.columns([3, 2, 2])
         with sc1:
@@ -72,18 +72,18 @@ def render_session_card(sess, db, monthlies, weeklies):
             st.markdown(f"Status: <span style='color:{status_color}'>{sess.status.title()}</span>", unsafe_allow_html=True)
         with sc3:
             if sess.status == 'planned':
-                if st.button("Complete", key=f"comp_{sess.id}"):
+                if st.button("Complete", key=f"comp_{prefix}_{sess.id}"):
                     update_session_status(db, sess.id, "completed", completion_date=today)
                     st.rerun()
-                if st.button("Skip", key=f"skip_{sess.id}"):
+                if st.button("Skip", key=f"skip_{prefix}_{sess.id}"):
                     update_session_status(db, sess.id, "skipped")
                     st.rerun()
-            if st.button("Delete", key=f"del_sess_{sess.id}"):
+            if st.button("Delete", key=f"del_sess_{prefix}_{sess.id}"):
                 delete_study_session(db, sess.id)
                 st.rerun()
                 
         with st.expander("Edit Session"):
-            with st.form(f"edit_form_{sess.id}"):
+            with st.form(f"edit_form_{prefix}_{sess.id}"):
                 e_topic = st.text_input("Topic", value=sess.topic)
                 e_duration = st.number_input("Duration (minutes)", min_value=15, step=15, value=sess.duration_minutes)
                 e_type = st.selectbox("Session Type", ["Learning", "Practice", "Revision", "Project", "Mock Interview"], index=["Learning", "Practice", "Revision", "Project", "Mock Interview"].index(sess.session_type) if sess.session_type in ["Learning", "Practice", "Revision", "Project", "Mock Interview"] else 0)
@@ -108,7 +108,7 @@ with tab_daily:
         st.info("No study sessions planned for this date.")
     else:
         for sess in sessions:
-            render_session_card(sess, db, monthlies, weeklies)
+            render_session_card(sess, db, monthlies, weeklies, prefix="daily")
                         
     st.write("---")
     st.subheader("Add Study Session")
@@ -172,7 +172,7 @@ with tab_weekly:
             if day_sessions:
                 st.markdown(f"**{d.strftime('%A, %b %d')}**")
                 for sess in day_sessions:
-                    render_session_card(sess, db, monthlies, weeklies)
+                    render_session_card(sess, db, monthlies, weeklies, prefix="weekly")
                 st.write("")
 
 db.close()
