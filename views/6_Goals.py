@@ -3,7 +3,7 @@ from datetime import date
 from database import get_db_session
 from services.goal_service import (
     get_annual_goals, add_annual_goal, update_annual_goal_progress, edit_annual_goal, delete_annual_goal,
-    get_monthly_goals, add_monthly_goal, update_monthly_goal_status, delete_monthly_goal,
+    get_monthly_goals, add_monthly_goal, update_monthly_goal_status, update_monthly_goal_progress, delete_monthly_goal,
     get_weekly_plans, add_weekly_plan, update_weekly_plan_status, delete_weekly_plan,
     calculate_goal_alignment
 )
@@ -62,17 +62,28 @@ with col_b:
     for m in monthlies:
         mc1, mc2 = st.columns([5, 1])
         with mc1:
-            checked = st.checkbox(m.goal_text, value=m.completed, key=f"mg_{m.id}")
-            if checked != m.completed:
-                update_monthly_goal_status(db, m.id, checked)
-                st.rerun()
+            st.markdown(f"**{m.goal_text}** (Weight: {m.weight})")
+            if m.progress_mode == "manual":
+                prog = st.slider("Progress", 0, 100, m.progress, key=f"mg_prog_{m.id}")
+                if prog != m.progress:
+                    update_monthly_goal_progress(db, m.id, prog)
+                    st.rerun()
+            else:
+                st.progress(m.progress / 100.0, text=f"Auto Progress: {m.progress}%")
         with mc2:
             if st.button("🗑️", key=f"del_mg_{m.id}", help="Delete Monthly Goal"):
                 delete_monthly_goal(db, m.id)
                 st.rerun()
+        st.write("---")
         
     with st.form("add_monthly"):
         m_txt = st.text_input("New Monthly Goal")
+        
+        m_c1, m_c2 = st.columns(2)
+        with m_c1:
+            p_mode = st.selectbox("Progress Mode", ["manual", "automatic"], help="Automatic goals track progress based on weekly plans.")
+        with m_c2:
+            m_weight = st.number_input("Goal Weight", min_value=1, max_value=10, value=1, help="Used for weighted annual progress calculation.")
         
         annual_opts = {0: "None"}
         annuals_all = get_annual_goals(db, current_year)
@@ -81,7 +92,7 @@ with col_b:
         selected_a = st.selectbox("Link to Annual Goal", options=list(annual_opts.keys()), format_func=lambda x: annual_opts[x])
         
         if st.form_submit_button("Add Goal") and m_txt:
-            add_monthly_goal(db, curr_ym, m_txt, selected_a if selected_a != 0 else None)
+            add_monthly_goal(db, curr_ym, m_txt, selected_a if selected_a != 0 else None, p_mode, m_weight)
             st.rerun()
 
 # 3. Weekly Plans

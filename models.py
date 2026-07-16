@@ -10,12 +10,8 @@ habit_tag_association = Table(
     Column('tag_id', Integer, ForeignKey('tags.id', ondelete="CASCADE"), primary_key=True)
 )
 
-# Many-to-Many relationship table for Subject Dependencies
-subject_dependencies = Table(
-    'subject_dependencies', Base.metadata,
-    Column('subject_id', Integer, ForeignKey('subjects.id', ondelete="CASCADE"), primary_key=True),
-    Column('depends_on_id', Integer, ForeignKey('subjects.id', ondelete="CASCADE"), primary_key=True)
-)
+# Many-to-Many relationship table for Subject Dependencies is now an Association Object
+# (See SubjectDependency class below)
 
 class Tag(Base):
     __tablename__ = "tags"
@@ -97,6 +93,11 @@ class MonthlyGoal(Base):
     year_month = Column(String, index=True) # YYYY-MM
     goal_text = Column(String)
     completed = Column(Boolean, default=False)
+    
+    progress_mode = Column(String, default="manual") # manual, automatic
+    progress = Column(Integer, default=0) # 0-100%
+    weight = Column(Integer, default=1)
+    
     annual_goal_id = Column(Integer, ForeignKey('annual_goals.id', ondelete="CASCADE"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -182,13 +183,15 @@ class Subject(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     sessions = relationship("StudySession", back_populates="subject")
-    dependencies = relationship(
-        "Subject",
-        secondary=subject_dependencies,
-        primaryjoin=id==subject_dependencies.c.subject_id,
-        secondaryjoin=id==subject_dependencies.c.depends_on_id,
-        backref="depended_by"
-    )
+    
+class SubjectDependency(Base):
+    __tablename__ = 'subject_dependencies'
+    subject_id = Column(Integer, ForeignKey('subjects.id', ondelete="CASCADE"), primary_key=True)
+    depends_on_id = Column(Integer, ForeignKey('subjects.id', ondelete="CASCADE"), primary_key=True)
+    is_required = Column(Boolean, default=True)
+    
+    subject = relationship("Subject", foreign_keys=[subject_id], backref="dependency_links")
+    dependency = relationship("Subject", foreign_keys=[depends_on_id])
 
 
 class StudySession(Base):
@@ -217,7 +220,8 @@ class StudySession(Base):
     session_type = Column(String, default="Learning") # Learning, Practice, Revision, Project, Mock Interview
     source_type = Column(String, default="Other") # Udemy, YouTube, Book, Practice, College, Personal Notes, Other
     resource_name = Column(String, default="")
-    priority = Column(String, default="Medium") # High, Medium, Low
+    resource_url = Column(String, default="")
+    priority = Column(Integer, default=2) # 3: High, 2: Medium, 1: Low
     
     monthly_goal_id = Column(Integer, ForeignKey('monthly_goals.id'), nullable=True)
     weekly_plan_id = Column(Integer, ForeignKey('weekly_plans.id'), nullable=True)

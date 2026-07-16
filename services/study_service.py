@@ -10,8 +10,9 @@ def get_subjects(db: Session, active_only: bool = True):
         query = query.filter(Subject.active == True)
     return query.all()
 
-def add_subject(db: Session, name: str, category: str, priority: int, estimated_total_hours: int, color: str, dependencies: list[int] = None):
+def add_subject(db: Session, name: str, category: str, priority: int, estimated_total_hours: int, color: str, required_deps: list[int] = None, optional_deps: list[int] = None):
     from sqlalchemy.exc import IntegrityError
+    from models import SubjectDependency
     
     subject = Subject(
         name=name,
@@ -21,9 +22,13 @@ def add_subject(db: Session, name: str, category: str, priority: int, estimated_
         color=color
     )
     
-    if dependencies:
-        deps = db.query(Subject).filter(Subject.id.in_(dependencies)).all()
-        subject.dependencies.extend(deps)
+    if required_deps:
+        for dep_id in required_deps:
+            subject.dependency_links.append(SubjectDependency(depends_on_id=dep_id, is_required=True))
+            
+    if optional_deps:
+        for dep_id in optional_deps:
+            subject.dependency_links.append(SubjectDependency(depends_on_id=dep_id, is_required=False))
 
     db.add(subject)
     try:
@@ -53,7 +58,7 @@ def get_study_sessions(db: Session, start_date: date = None, end_date: date = No
 
 def add_study_session(db: Session, planned_date: date, subject_id: int, topic: str, duration_minutes: int, 
                       session_type: str, source_type: str, monthly_goal_id: int = None, weekly_plan_id: int = None,
-                      priority: str = "Medium", resource_name: str = ""):
+                      priority: int = 2, resource_name: str = "", resource_url: str = ""):
     session = StudySession(
         planned_date=planned_date,
         subject_id=subject_id,
@@ -64,7 +69,8 @@ def add_study_session(db: Session, planned_date: date, subject_id: int, topic: s
         monthly_goal_id=monthly_goal_id,
         weekly_plan_id=weekly_plan_id,
         priority=priority,
-        resource_name=resource_name
+        resource_name=resource_name,
+        resource_url=resource_url
     )
     db.add(session)
     db.commit()
@@ -100,7 +106,7 @@ def delete_study_session(db: Session, session_id: int):
 
 def edit_study_session(db: Session, session_id: int, topic: str, duration_minutes: int, 
                        session_type: str, source_type: str, monthly_goal_id: int = None, weekly_plan_id: int = None,
-                       priority: str = "Medium", resource_name: str = ""):
+                       priority: int = 2, resource_name: str = "", resource_url: str = ""):
     session = db.query(StudySession).filter(StudySession.id == session_id).first()
     if session:
         session.topic = topic
@@ -111,6 +117,7 @@ def edit_study_session(db: Session, session_id: int, topic: str, duration_minute
         session.weekly_plan_id = weekly_plan_id
         session.priority = priority
         session.resource_name = resource_name
+        session.resource_url = resource_url
         db.commit()
     return session
 

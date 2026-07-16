@@ -38,9 +38,13 @@ with tab_subjects:
                         st.success("Completed")
                         st.info("Active")
                 
-                if s.dependencies:
-                    deps_names = [d.name for d in s.dependencies]
-                    st.caption(f"Dependencies: {', '.join(deps_names)}")
+                if s.dependency_links:
+                    req = [link.dependency.name for link in s.dependency_links if link.is_required and link.dependency]
+                    opt = [link.dependency.name for link in s.dependency_links if not link.is_required and link.dependency]
+                    if req:
+                        st.caption(f"Required: {', '.join(req)}")
+                    if opt:
+                        st.caption(f"Optional: {', '.join(opt)}")
     
     st.write("---")
     st.subheader("Add New Subject")
@@ -53,10 +57,11 @@ with tab_subjects:
         
         # Dependencies multi-select
         dep_options = {sub.id: sub.name for sub in subjects} if subjects else {}
-        selected_deps = st.multiselect("Dependencies", options=list(dep_options.keys()), format_func=lambda x: dep_options[x])
+        selected_req_deps = st.multiselect("Required Dependencies", options=list(dep_options.keys()), format_func=lambda x: dep_options[x])
+        selected_opt_deps = st.multiselect("Optional Dependencies", options=list(dep_options.keys()), format_func=lambda x: dep_options[x])
         
         if st.form_submit_button("Add Subject") and name:
-            new_sub = add_subject(db, name, category, priority, est_hours, color, dependencies=selected_deps)
+            new_sub = add_subject(db, name, category, priority, est_hours, color, required_deps=selected_req_deps, optional_deps=selected_opt_deps)
             if new_sub:
                 st.rerun()
             else:
@@ -72,8 +77,9 @@ def render_session_card(sess, db, monthlies, weeklies, prefix=""):
         sc1, sc2, sc3 = st.columns([3, 2, 2])
         with sc1:
             subject_name = sess.subject.name if sess.subject else "Unknown"
-            st.markdown(f"**{subject_name}** - {sess.topic} <span style='font-size:0.8em;color:gray'>[{sess.priority}]</span>", unsafe_allow_html=True)
-            res_str = f" | {sess.resource_name}" if sess.resource_name else ""
+            pri_map = {3: "High", 2: "Medium", 1: "Low"}
+            st.markdown(f"**{subject_name}** - {sess.topic} <span style='font-size:0.8em;color:gray'>[{pri_map.get(sess.priority, 'Unknown')}]</span>", unsafe_allow_html=True)
+            res_str = f" | [{sess.resource_name}]({sess.resource_url})" if sess.resource_name and sess.resource_url else (f" | {sess.resource_name}" if sess.resource_name else "")
             st.caption(f"{sess.session_type} | {sess.duration_minutes} mins | {sess.source_type}{res_str}")
         with sc2:
             status_color = {"planned": "orange", "completed": "green", "skipped": "red"}.get(sess.status, "gray")
@@ -98,10 +104,11 @@ def render_session_card(sess, db, monthlies, weeklies, prefix=""):
                 ec1, ec2 = st.columns(2)
                 with ec1:
                     e_type = st.selectbox("Session Type", ["Learning", "Practice", "Revision", "Project", "Mock Interview"], index=["Learning", "Practice", "Revision", "Project", "Mock Interview"].index(sess.session_type) if sess.session_type in ["Learning", "Practice", "Revision", "Project", "Mock Interview"] else 0)
-                    e_priority = st.selectbox("Priority", ["High", "Medium", "Low"], index=["High", "Medium", "Low"].index(sess.priority) if sess.priority in ["High", "Medium", "Low"] else 1)
+                    e_priority = st.selectbox("Priority", [3, 2, 1], format_func=lambda x: {3: "High", 2: "Medium", 1: "Low"}[x], index=[3, 2, 1].index(sess.priority) if sess.priority in [3, 2, 1] else 1)
                 with ec2:
                     e_source = st.selectbox("Source Type", ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"], index=["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"].index(sess.source_type) if sess.source_type in ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"] else 0)
                     e_resource = st.text_input("Resource Name", value=sess.resource_name)
+                    e_url = st.text_input("Resource URL", value=sess.resource_url)
                 
                 m_keys = [None] + list(monthlies.keys())
                 w_keys = [None] + list(weeklies.keys())
@@ -109,7 +116,7 @@ def render_session_card(sess, db, monthlies, weeklies, prefix=""):
                 e_w_plan = st.selectbox("Link Weekly Plan", w_keys, format_func=lambda x: weeklies.get(x, "None"), index=w_keys.index(sess.weekly_plan_id) if sess.weekly_plan_id in w_keys else 0)
                 
                 if st.form_submit_button("Update Session") and e_topic:
-                    edit_study_session(db, sess.id, e_topic, e_duration, e_type, e_source, e_m_goal, e_w_plan, priority=e_priority, resource_name=e_resource)
+                    edit_study_session(db, sess.id, e_topic, e_duration, e_type, e_source, e_m_goal, e_w_plan, priority=e_priority, resource_name=e_resource, resource_url=e_url)
                     st.rerun()
 
 with tab_daily:
@@ -139,10 +146,11 @@ with tab_daily:
             c1, c2 = st.columns(2)
             with c1:
                 s_type = st.selectbox("Session Type", ["Learning", "Practice", "Revision", "Project", "Mock Interview"])
-                s_priority = st.selectbox("Priority", ["High", "Medium", "Low"], index=1)
+                s_priority = st.selectbox("Priority", [3, 2, 1], format_func=lambda x: {3: "High", 2: "Medium", 1: "Low"}[x], index=1)
             with c2:
                 s_source = st.selectbox("Source Type", ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"])
                 s_resource = st.text_input("Resource Name (e.g. course name)")
+                s_url = st.text_input("Resource URL")
                 
             g1, g2 = st.columns(2)
             with g1:
@@ -162,7 +170,8 @@ with tab_daily:
                     monthly_goal_id=m_goal,
                     weekly_plan_id=w_plan,
                     priority=s_priority,
-                    resource_name=s_resource
+                    resource_name=s_resource,
+                    resource_url=s_url
                 )
                 st.rerun()
 

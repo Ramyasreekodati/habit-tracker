@@ -49,13 +49,38 @@ def calculate_annual_progress(db_session, annual_goal_id: int):
     try:
         goal = db_session.query(AnnualGoal).filter(AnnualGoal.id == annual_goal_id).first()
         if goal:
-            total_monthly = len(goal.monthly_goals)
-            if total_monthly == 0:
+            total_weight = sum(mg.weight for mg in goal.monthly_goals)
+            if total_weight == 0:
                 goal.progress = 0
             else:
-                completed = sum(1 for mg in goal.monthly_goals if mg.completed)
-                goal.progress = int((completed / total_monthly) * 100)
+                # Ensure mg.progress is synced with completed status for manual goals that don't use progress slider
+                for mg in goal.monthly_goals:
+                    if mg.progress_mode == "manual" and mg.completed:
+                        mg.progress = 100
+                    elif mg.progress_mode == "manual" and not mg.completed and mg.progress == 100:
+                        mg.progress = 0
+                weighted_progress = sum((mg.progress * mg.weight) for mg in goal.monthly_goals)
+                goal.progress = int(weighted_progress / total_weight)
             db_session.commit()
+    except Exception as e:
+        db_session.rollback()
+        raise e
+
+def calculate_monthly_progress(db_session, monthly_goal_id: int):
+    try:
+        goal = db_session.query(MonthlyGoal).filter(MonthlyGoal.id == monthly_goal_id).first()
+        if goal and goal.progress_mode == "automatic":
+            total_plans = len(goal.weekly_plans)
+            if total_plans == 0:
+                goal.progress = 0
+                goal.completed = False
+            else:
+                completed = sum(1 for wp in goal.weekly_plans if wp.completed)
+                goal.progress = int((completed / total_plans) * 100)
+                goal.completed = (goal.progress == 100)
+            db_session.commit()
+            if goal.annual_goal_id:
+                calculate_annual_progress(db_session, goal.annual_goal_id)
     except Exception as e:
         db_session.rollback()
         raise e
@@ -63,9 +88,9 @@ def calculate_annual_progress(db_session, annual_goal_id: int):
 def get_monthly_goals(db_session, year_month: str):
     return db_session.query(MonthlyGoal).filter(MonthlyGoal.year_month == year_month).all()
 
-def add_monthly_goal(db_session, year_month: str, goal_text: str, annual_goal_id: int = None):
+def add_monthly_goal(db_session, year_month: str, goal_text: str, annual_goal_id: int = None, progress_mode: str = "manual", weight: int = 1):
     try:
-        goal = MonthlyGoal(year_month=year_month, goal_text=goal_text, annual_goal_id=annual_goal_id)
+        goal = MonthlyGoal(year_month=year_month, goal_text=goal_text, annual_goal_id=annual_goal_id, progress_mode=progress_mode, weight=weight)
         db_session.add(goal)
         db_session.commit()
         if annual_goal_id:
@@ -80,6 +105,19 @@ def update_monthly_goal_status(db_session, goal_id: int, completed: bool):
         goal = db_session.query(MonthlyGoal).filter(MonthlyGoal.id == goal_id).first()
         if goal:
             goal.completed = completed
+            db_session.commit()
+            if goal.annual_goal_id:
+                calculate_annual_progress(db_session, goal.annual_goal_id)
+    except Exception as e:
+        db_session.rollback()
+        raise e
+
+def update_monthly_goal_progress(db_session, goal_id: int, progress: int):
+    try:
+        goal = db_session.query(MonthlyGoal).filter(MonthlyGoal.id == goal_id).first()
+        if goal and goal.progress_mode == "manual":
+            goal.progress = progress
+            goal.completed = (progress == 100)
             db_session.commit()
             if goal.annual_goal_id:
                 calculate_annual_progress(db_session, goal.annual_goal_id)
@@ -108,6 +146,8 @@ def add_weekly_plan(db_session, year_month: str, week_number: int, task_text: st
         plan = WeeklyPlan(year_month=year_month, week_number=week_number, task_text=task_text, monthly_goal_id=monthly_goal_id)
         db_session.add(plan)
         db_session.commit()
+        if monthly_goal_id:
+            calculate_monthly_progress(db_session, monthly_goal_id)
         return plan
     except Exception as e:
         db_session.rollback()
@@ -119,6 +159,8 @@ def update_weekly_plan_status(db_session, plan_id: int, completed: bool):
         if plan:
             plan.completed = completed
             db_session.commit()
+            if plan.monthly_goal_id:
+                calculate_monthly_progress(db_session, plan.monthly_goal_id)
     except Exception as e:
         db_session.rollback()
         raise e
@@ -127,8 +169,11 @@ def delete_weekly_plan(db_session, plan_id: int):
     try:
         plan = db_session.query(WeeklyPlan).filter(WeeklyPlan.id == plan_id).first()
         if plan:
+            monthly_goal_id = plan.monthly_goal_id
             db_session.delete(plan)
             db_session.commit()
+            if monthly_goal_id:
+                calculate_monthly_progress(db_session, monthly_goal_id)
     except Exception as e:
         db_session.rollback()
         raise e

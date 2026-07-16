@@ -58,7 +58,7 @@ def get_revision_completion_rate(db: Session, start_date: date, end_date: date):
     return round((completed / total) * 100, 1)
 
 def check_burnout_warning(db: Session, today: date):
-    # 0.1 hours
+    # 0.15 hours
     last_7 = db.query(func.sum(StudySession.duration_minutes))\
                .filter(StudySession.status == 'completed', StudySession.completion_date > today - timedelta(days=7), StudySession.completion_date <= today).scalar() or 0
     prev_7 = db.query(func.sum(StudySession.duration_minutes))\
@@ -68,24 +68,24 @@ def check_burnout_warning(db: Session, today: date):
     if prev_7 > 0 and last_7 < prev_7:
         hours_factor = (prev_7 - last_7) / prev_7
         
-    # 0.4 sleep
+    # 0.35 sleep
     sleep_avg = db.query(func.avg(DailyJournal.sleep_hours))\
                   .filter(DailyJournal.date > today - timedelta(days=3), DailyJournal.date <= today).scalar() or 7.0
     sleep_factor = max(0, (7.0 - sleep_avg) / 7.0)
     
-    # 0.3 mood
+    # 0.20 mood
     negative_moods = ["😔 Sad", "😠 Frustrated", "😴 Tired"]
     recent_journals = db.query(DailyJournal)\
                         .filter(DailyJournal.date > today - timedelta(days=5), DailyJournal.date <= today).all()
     moods = [j.mood for j in recent_journals if j.mood]
     mood_factor = sum(1 for m in moods if m in negative_moods) / 5.0
     
-    # 0.2 stress
+    # 0.30 stress
     stress_avg = db.query(func.avg(DailyJournal.stress_score))\
                   .filter(DailyJournal.date > today - timedelta(days=5), DailyJournal.date <= today).scalar() or 0.0
     stress_factor = stress_avg / 10.0
     
-    burnout_score = (0.4 * sleep_factor) + (0.3 * mood_factor) + (0.2 * stress_factor) + (0.1 * hours_factor)
+    burnout_score = (0.35 * sleep_factor) + (0.30 * stress_factor) + (0.20 * mood_factor) + (0.15 * hours_factor)
     
     is_burnout = burnout_score > 0.6
     
@@ -133,3 +133,13 @@ def get_most_neglected_subject(db: Session):
     # Sort by lowest progress
     subjects = subjects.sort_values(by="Progress %", ascending=True)
     return subjects.iloc[0]["Subject"]
+
+def get_study_consistency_score(db: Session, today: date):
+    start_date = today - timedelta(days=13)
+    completed_sessions = db.query(StudySession.completion_date)\
+                           .filter(StudySession.status == 'completed', 
+                                   StudySession.completion_date >= start_date, 
+                                   StudySession.completion_date <= today).all()
+    unique_days = len(set([s[0] for s in completed_sessions if s[0]]))
+    score = int((unique_days / 14) * 100)
+    return unique_days, score

@@ -96,9 +96,13 @@ with col_right:
     completed_mins = sum(s.duration_minutes for s in today_sessions if s.status == 'completed')
     deep_work_mins = sum(s.duration_minutes for s in today_sessions if s.status == 'completed' and s.duration_minutes >= 50)
     
+    from services.study_analytics_service import get_study_consistency_score
+    unique_days, consistency_score = get_study_consistency_score(db, today)
+    
     st.markdown(f"**Revisions Due:** {revisions_due}")
     st.markdown(f"**Study Hours:** {round(completed_mins/60, 1)}h / {round(planned_mins/60, 1)}h")
     st.markdown(f"**Deep Work Today:** {round(deep_work_mins/60, 1)}h")
+    st.markdown(f"**Study Consistency (Last 14 days):** {consistency_score}% ({unique_days} study days)")
             
     st.write("---")
     st.subheader("⏱️ Recent Activity")
