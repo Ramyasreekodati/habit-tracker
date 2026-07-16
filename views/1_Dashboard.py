@@ -6,6 +6,8 @@ from services.analytics_service import (
     get_smart_insights, get_dashboard_kpis, get_todays_tasks, 
     get_category_performance, get_weekly_trend, get_recent_activity
 )
+from models import StudySession, RevisionQueue
+from sqlalchemy import func
 
 st.title("LifeOS Dashboard")
 
@@ -38,6 +40,16 @@ with col_left:
         for t in tasks:
             status_icon = "✅" if t['status'] == "completed" else "❌" if t['status'] == "missed" else "⏭️" if t['status'] == "skipped" else "⬜"
             st.markdown(f"{status_icon} **{t['name']}**  `{t['category']}`")
+            
+    st.write("---")
+    st.subheader("📚 Today's Learning")
+    today_sessions = db.query(StudySession).filter(StudySession.planned_date == today).all()
+    if not today_sessions:
+        st.info("No study sessions planned for today.")
+    else:
+        for s in today_sessions:
+            icon = "✅" if s.status == "completed" else "⬜"
+            st.markdown(f"{icon} **{s.topic}** ({s.subject.name if s.subject else 'Uncategorized'})")
             
     st.write("---")
     st.subheader("📈 Weekly Trend")
@@ -74,6 +86,19 @@ with col_right:
             st.altair_chart(pie_chart, use_container_width=True)
         else:
             st.info("No completions recorded yet.")
+            
+    st.write("---")
+    st.subheader("🧠 Learning Stats")
+    
+    # Calculate learning stats
+    revisions_due = db.query(RevisionQueue).filter(RevisionQueue.revision_date <= today, RevisionQueue.completed == False).count()
+    planned_mins = sum(s.duration_minutes for s in today_sessions)
+    completed_mins = sum(s.duration_minutes for s in today_sessions if s.status == 'completed')
+    deep_work_mins = sum(s.duration_minutes for s in today_sessions if s.status == 'completed' and s.duration_minutes >= 50)
+    
+    st.markdown(f"**Revisions Due:** {revisions_due}")
+    st.markdown(f"**Study Hours:** {round(completed_mins/60, 1)}h / {round(planned_mins/60, 1)}h")
+    st.markdown(f"**Deep Work Today:** {round(deep_work_mins/60, 1)}h")
             
     st.write("---")
     st.subheader("⏱️ Recent Activity")

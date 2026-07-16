@@ -58,35 +58,43 @@ def get_revision_completion_rate(db: Session, start_date: date, end_date: date):
     return round((completed / total) * 100, 1)
 
 def check_burnout_warning(db: Session, today: date):
-    # Rule 1: Study hours down 40% (comparing last 7 days vs previous 7 days)
+    # 0.1 hours
     last_7 = db.query(func.sum(StudySession.duration_minutes))\
                .filter(StudySession.status == 'completed', StudySession.completion_date > today - timedelta(days=7), StudySession.completion_date <= today).scalar() or 0
     prev_7 = db.query(func.sum(StudySession.duration_minutes))\
                .filter(StudySession.status == 'completed', StudySession.completion_date > today - timedelta(days=14), StudySession.completion_date <= today - timedelta(days=7)).scalar() or 0
     
-    hours_drop = False
-    if prev_7 > 0 and (last_7 / prev_7) <= 0.6:
-        hours_drop = True
+    hours_factor = 0
+    if prev_7 > 0 and last_7 < prev_7:
+        hours_factor = (prev_7 - last_7) / prev_7
         
-    # Rule 2: average sleep < 6h over last 3 days
+    # 0.4 sleep
     sleep_avg = db.query(func.avg(DailyJournal.sleep_hours))\
                   .filter(DailyJournal.date > today - timedelta(days=3), DailyJournal.date <= today).scalar() or 7.0
-    low_sleep = sleep_avg < 6.0
+    sleep_factor = max(0, (7.0 - sleep_avg) / 7.0)
     
-    # Rule 3: mood negative for 5 days
+    # 0.3 mood
     negative_moods = ["😔 Sad", "😠 Frustrated", "😴 Tired"]
-    recent_journals = db.query(DailyJournal.mood)\
+    recent_journals = db.query(DailyJournal)\
                         .filter(DailyJournal.date > today - timedelta(days=5), DailyJournal.date <= today).all()
     moods = [j.mood for j in recent_journals if j.mood]
-    negative_streak = len(moods) == 5 and all(m in negative_moods for m in moods)
+    mood_factor = sum(1 for m in moods if m in negative_moods) / 5.0
     
-    is_burnout = hours_drop and low_sleep and negative_streak
+    # 0.2 stress
+    stress_avg = db.query(func.avg(DailyJournal.stress_score))\
+                  .filter(DailyJournal.date > today - timedelta(days=5), DailyJournal.date <= today).scalar() or 0.0
+    stress_factor = stress_avg / 10.0
+    
+    burnout_score = (0.4 * sleep_factor) + (0.3 * mood_factor) + (0.2 * stress_factor) + (0.1 * hours_factor)
+    
+    is_burnout = burnout_score > 0.6
     
     return {
         "is_burnout": is_burnout,
-        "hours_drop": hours_drop,
-        "low_sleep": low_sleep,
-        "negative_streak": negative_streak
+        "burnout_score": round(burnout_score, 2),
+        "hours_drop": hours_factor > 0.5,
+        "low_sleep": sleep_factor > 0.5,
+        "negative_streak": mood_factor > 0.5
     }
 
 def get_most_productive_weekday(db: Session):

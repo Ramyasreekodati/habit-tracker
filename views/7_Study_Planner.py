@@ -16,7 +16,7 @@ db = get_db_session()
 today = date.today()
 
 # Tabs
-tab_daily, tab_weekly, tab_subjects = st.tabs(["Daily Planner", "Weekly Planner", "Subjects"])
+tab_daily, tab_weekly, tab_monthly, tab_subjects = st.tabs(["Daily Planner", "Weekly Planner", "Monthly Calendar", "Subjects"])
 
 with tab_subjects:
     st.subheader("Subject Master")
@@ -36,8 +36,11 @@ with tab_subjects:
                 with col3:
                     if s.is_completed:
                         st.success("Completed")
-                    else:
                         st.info("Active")
+                
+                if s.dependencies:
+                    deps_names = [d.name for d in s.dependencies]
+                    st.caption(f"Dependencies: {', '.join(deps_names)}")
     
     st.write("---")
     st.subheader("Add New Subject")
@@ -48,8 +51,12 @@ with tab_subjects:
         priority = st.selectbox("Priority", [1, 2, 3], format_func=lambda x: {1: "High", 2: "Medium", 3: "Low"}[x])
         color = st.color_picker("Color", "#4CAF50")
         
+        # Dependencies multi-select
+        dep_options = {sub.id: sub.name for sub in subjects} if subjects else {}
+        selected_deps = st.multiselect("Dependencies", options=list(dep_options.keys()), format_func=lambda x: dep_options[x])
+        
         if st.form_submit_button("Add Subject") and name:
-            new_sub = add_subject(db, name, category, priority, est_hours, color)
+            new_sub = add_subject(db, name, category, priority, est_hours, color, dependencies=selected_deps)
             if new_sub:
                 st.rerun()
             else:
@@ -65,8 +72,9 @@ def render_session_card(sess, db, monthlies, weeklies, prefix=""):
         sc1, sc2, sc3 = st.columns([3, 2, 2])
         with sc1:
             subject_name = sess.subject.name if sess.subject else "Unknown"
-            st.markdown(f"**{subject_name}** - {sess.topic}")
-            st.caption(f"{sess.session_type} | {sess.duration_minutes} mins | {sess.source_type}")
+            st.markdown(f"**{subject_name}** - {sess.topic} <span style='font-size:0.8em;color:gray'>[{sess.priority}]</span>", unsafe_allow_html=True)
+            res_str = f" | {sess.resource_name}" if sess.resource_name else ""
+            st.caption(f"{sess.session_type} | {sess.duration_minutes} mins | {sess.source_type}{res_str}")
         with sc2:
             status_color = {"planned": "orange", "completed": "green", "skipped": "red"}.get(sess.status, "gray")
             st.markdown(f"Status: <span style='color:{status_color}'>{sess.status.title()}</span>", unsafe_allow_html=True)
@@ -86,8 +94,14 @@ def render_session_card(sess, db, monthlies, weeklies, prefix=""):
             with st.form(f"edit_form_{prefix}_{sess.id}"):
                 e_topic = st.text_input("Topic", value=sess.topic)
                 e_duration = st.number_input("Duration (minutes)", min_value=15, step=15, value=sess.duration_minutes)
-                e_type = st.selectbox("Session Type", ["Learning", "Practice", "Revision", "Project", "Mock Interview"], index=["Learning", "Practice", "Revision", "Project", "Mock Interview"].index(sess.session_type) if sess.session_type in ["Learning", "Practice", "Revision", "Project", "Mock Interview"] else 0)
-                e_source = st.selectbox("Source Type", ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"], index=["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"].index(sess.source_type) if sess.source_type in ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"] else 0)
+                
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    e_type = st.selectbox("Session Type", ["Learning", "Practice", "Revision", "Project", "Mock Interview"], index=["Learning", "Practice", "Revision", "Project", "Mock Interview"].index(sess.session_type) if sess.session_type in ["Learning", "Practice", "Revision", "Project", "Mock Interview"] else 0)
+                    e_priority = st.selectbox("Priority", ["High", "Medium", "Low"], index=["High", "Medium", "Low"].index(sess.priority) if sess.priority in ["High", "Medium", "Low"] else 1)
+                with ec2:
+                    e_source = st.selectbox("Source Type", ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"], index=["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"].index(sess.source_type) if sess.source_type in ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"] else 0)
+                    e_resource = st.text_input("Resource Name", value=sess.resource_name)
                 
                 m_keys = [None] + list(monthlies.keys())
                 w_keys = [None] + list(weeklies.keys())
@@ -95,7 +109,7 @@ def render_session_card(sess, db, monthlies, weeklies, prefix=""):
                 e_w_plan = st.selectbox("Link Weekly Plan", w_keys, format_func=lambda x: weeklies.get(x, "None"), index=w_keys.index(sess.weekly_plan_id) if sess.weekly_plan_id in w_keys else 0)
                 
                 if st.form_submit_button("Update Session") and e_topic:
-                    edit_study_session(db, sess.id, e_topic, e_duration, e_type, e_source, e_m_goal, e_w_plan)
+                    edit_study_session(db, sess.id, e_topic, e_duration, e_type, e_source, e_m_goal, e_w_plan, priority=e_priority, resource_name=e_resource)
                     st.rerun()
 
 with tab_daily:
@@ -125,8 +139,10 @@ with tab_daily:
             c1, c2 = st.columns(2)
             with c1:
                 s_type = st.selectbox("Session Type", ["Learning", "Practice", "Revision", "Project", "Mock Interview"])
+                s_priority = st.selectbox("Priority", ["High", "Medium", "Low"], index=1)
             with c2:
                 s_source = st.selectbox("Source Type", ["Udemy", "YouTube", "Book", "Practice", "College", "Personal Notes", "Other"])
+                s_resource = st.text_input("Resource Name (e.g. course name)")
                 
             g1, g2 = st.columns(2)
             with g1:
@@ -144,7 +160,9 @@ with tab_daily:
                     session_type=s_type,
                     source_type=s_source,
                     monthly_goal_id=m_goal,
-                    weekly_plan_id=w_plan
+                    weekly_plan_id=w_plan,
+                    priority=s_priority,
+                    resource_name=s_resource
                 )
                 st.rerun()
 
@@ -174,5 +192,56 @@ with tab_weekly:
                 for sess in day_sessions:
                     render_session_card(sess, db, monthlies, weeklies, prefix="weekly")
                 st.write("")
+
+with tab_monthly:
+    st.subheader("Monthly Calendar")
+    
+    # Month navigation
+    if "cal_month_offset" not in st.session_state:
+        st.session_state.cal_month_offset = 0
+        
+    cc1, cc2, cc3 = st.columns([1, 4, 1])
+    with cc1:
+        if st.button("⬅️ Previous"):
+            st.session_state.cal_month_offset -= 1
+            st.rerun()
+    with cc3:
+        if st.button("Next ➡️"):
+            st.session_state.cal_month_offset += 1
+            st.rerun()
+            
+    # Calculate target month
+    target_date = today
+    for _ in range(abs(st.session_state.cal_month_offset)):
+        if st.session_state.cal_month_offset > 0:
+            target_date = (target_date.replace(day=1) + timedelta(days=32)).replace(day=1)
+        else:
+            target_date = (target_date.replace(day=1) - timedelta(days=1))
+            
+    with cc2:
+        st.markdown(f"<h3 style='text-align: center;'>{target_date.strftime('%B %Y')}</h3>", unsafe_allow_html=True)
+        
+    # Get first and last day of month
+    first_day = target_date.replace(day=1)
+    if first_day.month == 12:
+        last_day = first_day.replace(year=first_day.year+1, month=1, day=1) - timedelta(days=1)
+    else:
+        last_day = first_day.replace(month=first_day.month+1, day=1) - timedelta(days=1)
+        
+    monthly_sessions = get_study_sessions(db, start_date=first_day, end_date=last_day)
+    
+    sessions_by_date = {}
+    for sess in monthly_sessions:
+        if sess.planned_date not in sessions_by_date:
+            sessions_by_date[sess.planned_date] = []
+        sessions_by_date[sess.planned_date].append(sess)
+        
+    for i in range((last_day - first_day).days + 1):
+        d = first_day + timedelta(days=i)
+        day_sessions = sessions_by_date.get(d, [])
+        if day_sessions:
+            with st.expander(f"{d.strftime('%A, %b %d')} ({len(day_sessions)} sessions)"):
+                for sess in day_sessions:
+                    render_session_card(sess, db, monthlies, weeklies, prefix=f"monthly_{sess.id}")
 
 db.close()

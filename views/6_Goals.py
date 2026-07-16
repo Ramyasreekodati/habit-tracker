@@ -33,9 +33,7 @@ with col_a:
         with st.container(border=True):
             st.markdown(f"**{a.title}**")
             st.caption(a.description)
-            new_prog = st.slider("Progress", 0, 100, a.progress, key=f"ag_{a.id}")
-            if new_prog != a.progress:
-                update_annual_goal_progress(db, a.id, new_prog)
+            st.progress(a.progress / 100.0, text=f"{a.progress}%")
             
             with st.expander("Edit / Delete"):
                 with st.form(f"edit_ag_{a.id}"):
@@ -75,8 +73,15 @@ with col_b:
         
     with st.form("add_monthly"):
         m_txt = st.text_input("New Monthly Goal")
+        
+        annual_opts = {0: "None"}
+        annuals_all = get_annual_goals(db, current_year)
+        for an in annuals_all:
+            annual_opts[an.id] = an.title
+        selected_a = st.selectbox("Link to Annual Goal", options=list(annual_opts.keys()), format_func=lambda x: annual_opts[x])
+        
         if st.form_submit_button("Add Goal") and m_txt:
-            add_monthly_goal(db, curr_ym, m_txt)
+            add_monthly_goal(db, curr_ym, m_txt, selected_a if selected_a != 0 else None)
             st.rerun()
 
 # 3. Weekly Plans
@@ -100,8 +105,15 @@ with col_c:
     with st.form("add_weekly"):
         w_num = st.number_input("Week", min_value=1, max_value=5, value=1)
         w_txt = st.text_input("New Task")
+        
+        monthly_opts = {0: "None"}
+        monthlies_all = get_monthly_goals(db, curr_ym)
+        for mo in monthlies_all:
+            monthly_opts[mo.id] = mo.goal_text
+        selected_m = st.selectbox("Link to Monthly Goal", options=list(monthly_opts.keys()), format_func=lambda x: monthly_opts[x])
+        
         if st.form_submit_button("Add Task") and w_txt:
-            add_weekly_plan(db, curr_ym, w_num, w_txt)
+            add_weekly_plan(db, curr_ym, w_num, w_txt, selected_m if selected_m != 0 else None)
             st.rerun()
 
 db.close()

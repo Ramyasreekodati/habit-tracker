@@ -270,7 +270,7 @@ for d in range(1, num_days + 1):
             weeks[week_num]["total"] += 1
             idx = f"{h.id}_{h.name}"
             # Check the status in the dataframe (handles unsaved edits as well)
-            if df_data.get(idx, {}).get(str(d)) == "✅":
+            if edited_df.loc[idx, str(d)] == "✅":
                 weeks[week_num]["completed"] += 1
 
 # Render charts side by side
